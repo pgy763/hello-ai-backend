@@ -1,6 +1,6 @@
 # Hello, AI Backend
 
-![进度](https://img.shields.io/badge/章节进度-2%2F15-blue)
+![进度](https://img.shields.io/badge/章节进度-3%2F15-blue)
 ![java](https://img.shields.io/badge/Java-17%2B-orange)
 ![spring](https://img.shields.io/badge/Spring_Boot-3.x-green)
 ![语言](https://img.shields.io/badge/语言-中文-red)
@@ -51,7 +51,7 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 | 章 | 标题 | 你会得到 | 状态 |
 | --- | --- | --- | --- |
 | 1 | [选型：Spring AI vs LangChain4j vs 裸 HTTP](docs/guide/01-selection.md) | 一张按团队规模和技术栈说话的决策表 | ✅ |
-| 2 | [第一个请求：从 Controller 到 SSE 流式响应](docs/guide/02-first-request.md) | 可流式返回的前后端联调方案 | 🚧 |
+| 2 | [第一个请求：从 Controller 到 SSE 流式响应](docs/guide/02-first-request.md) | 可流式返回的前后端联调方案，含线程池与 Nginx 配置 | ✅ |
 | 3 | [统一多模型接入](docs/guide/03-multi-provider.md) | Provider 抽象层，换模型不改业务代码 | 🚧 |
 
 ### 第二部分 · 生产必备的五个机制（全书核心）

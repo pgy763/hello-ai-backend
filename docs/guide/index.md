@@ -23,7 +23,7 @@ title: 全书目录
 | | 章节 | 状态 |
 | --- | --- | --- |
 | 1 | [选型：Spring AI vs LangChain4j vs 裸 HTTP](/guide/01-selection) | ✅ |
-| 2 | [第一个请求：从 Controller 到 SSE 流式响应](/guide/02-first-request) | 🚧 |
+| 2 | [第一个请求：从 Controller 到 SSE 流式响应](/guide/02-first-request) | ✅ |
 | 3 | [统一多模型接入](/guide/03-multi-provider) | 🚧 |
 
 ## 第二部分 · 生产必备的五个机制
