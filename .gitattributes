@@ -1,0 +1,17 @@
+# 统一换行符 —— 避免 Windows 提交 CRLF 导致 diff 全红
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.jar binary
+*.woff binary
+*.woff2 binary
+
+# 构建产物在 diff 中折叠
+docs/.vitepress/dist/** linguist-generated=true
+package-lock.json linguist-generated=true

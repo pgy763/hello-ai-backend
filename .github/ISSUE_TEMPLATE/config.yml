@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 先查踩坑手册
+    url: https://github.com/pgy763/llm-dev-pitfalls
+    about: 报错类问题大概率这里已经有答案。把报错原文复制进去 Ctrl+F 搜最独特的那个词。
+  - name: 作者的前身项目 llm-gateway
+    url: https://github.com/pgy763/llm-gateway
+    about: 本书参考实现的前身，一个能跑的 Spring Boot AI 接入层。

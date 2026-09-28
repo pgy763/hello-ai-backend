@@ -1,0 +1,15 @@
+{
+  "name": "hello-ai-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "写给 Java 后端工程师的 AI 接入手册",
+  "type": "module",
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
+  }
+}
