@@ -31,6 +31,10 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # 仓库尚未启用 Pages 时，由这一步自动创建 Pages 站点。
+          # 需要 workflow 拥有 pages: write 权限（见文件顶部的 permissions）。
+          enablement: true
 
       - name: Install dependencies
         run: npm ci
