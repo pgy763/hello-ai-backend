@@ -4,7 +4,7 @@ title: 第 14 章 · 毕业设计：给你自己的系统接上 AI
 
 # 第 14 章 · 毕业设计：给你自己的系统接上 AI
 
-::: info 本章状态：撰写中
+::: info 本章状态：已规划（仅提纲）
 下面是完整提纲。想优先看到这一章？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues)。
 :::
 

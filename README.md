@@ -1,6 +1,6 @@
 # Hello, AI Backend
 
-![进度](https://img.shields.io/badge/章节进度-3%2F15-blue)
+![进度](https://img.shields.io/badge/已完稿-3%2F15-blue)
 ![java](https://img.shields.io/badge/Java-17%2B-orange)
 ![spring](https://img.shields.io/badge/Spring_Boot-3.x-green)
 ![语言](https://img.shields.io/badge/语言-中文-red)
@@ -15,7 +15,7 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 **这本书补的就是这一段。**
 
-在线阅读：https://pgy763.github.io/hello-ai-backend/ （部署后可用）
+在线阅读：**https://pgy763.github.io/hello-ai-backend/**
 
 ---
 
@@ -52,7 +52,7 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 | --- | --- | --- | --- |
 | 1 | [选型：Spring AI vs LangChain4j vs 裸 HTTP](docs/guide/01-selection.md) | 一张按团队规模和技术栈说话的决策表 | ✅ |
 | 2 | [第一个请求：从 Controller 到 SSE 流式响应](docs/guide/02-first-request.md) | 可流式返回的前后端联调方案，含线程池与 Nginx 配置 | ✅ |
-| 3 | [统一多模型接入](docs/guide/03-multi-provider.md) | Provider 抽象层，换模型不改业务代码 | 🚧 |
+| 3 | [统一多模型接入](docs/guide/03-multi-provider.md) | Provider 抽象层，换模型不改业务代码 | 📝 🔜 下一章 |
 
 ### 第二部分 · 生产必备的五个机制（全书核心）
 
@@ -77,10 +77,15 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 | --- | --- | --- | --- |
 | 11 | [压测与容量规划](docs/guide/11-capacity.md) | 一张真实的价格 × 延迟取舍表 | 📝 |
 | 12 | [生产事故复盘集](docs/guide/12-postmortem.md) | 别人踩过的坑，你不必再踩 | 📝 |
-| 13 | [面试题：AI 后端工程师会被问到的 30 问](docs/guide/13-interview.md) | 求职直击 | 📝 |
+| 13 | [面试题：AI 后端工程师会被问到的 30 问](docs/guide/13-interview.md) | 求职直击 | 🚧 |
 | 14 | [毕业设计：给你自己的系统接上 AI](docs/guide/14-capstone.md) | 一个能写进简历的完整项目 | 📝 |
 
-图例：✅ 已完稿 · 🚧 撰写中 · 📝 已规划
+图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
+
+**当前进度**：已完稿 3 篇（序章 + 第 1、2 章）· 撰写中 1 章（第 13 章，已放出 6 道样题）· 仅提纲 11 章。
+下一个要写的是 **第 3 章 · 统一多模型接入**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
+
+> 状态按「仓库里实际有什么」标注，不按「打算写什么」标注 —— 点进去发现只有提纲，才是真的浪费时间。
 
 ---
 

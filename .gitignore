@@ -11,6 +11,8 @@ node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 docs/.vitepress/.temp/
+# vitepress dev 会在 config.mts 旁边生成带时间戳的副本，别提交
+docs/.vitepress/*.timestamp-*.mjs
 
 # IDE
 .idea/

@@ -4,8 +4,8 @@ title: 第 3 章 · 统一多模型接入
 
 # 第 3 章 · 统一多模型接入
 
-::: info 本章状态：撰写中
-下面是完整提纲。想优先看到这一章？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+::: info 本章状态：已规划（仅提纲）· 全书的下一章
+现在放出来的是提纲，正文正在写。想让它早点出来？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题

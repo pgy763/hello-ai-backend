@@ -11,7 +11,7 @@
 
 ## 配置
 
-所有示例共用一份 `application.example.yml` 模板：
+示例模块会共用一份 `application.example.yml` 模板（随第一个模块一起提交）：
 
 ```bash
 cp application.example.yml application-local.yml
@@ -24,7 +24,7 @@ cp application.example.yml application-local.yml
 
 | 目录 | 对应章节 | 状态 |
 | --- | --- | --- |
-| `01-selection/` | 第 1 章 · 三种方案的最小实现对比 | 🚧 |
+| `01-selection/` | 第 1 章 · 三种方案的最小实现对比 | 📝 |
 | `02-first-request/` | 第 2 章 · SSE 流式输出 | 📝 |
 | `03-multi-provider/` | 第 3 章 · Provider 抽象 | 📝 |
 | `04-virtual-key/` | 第 4 章 · 虚拟密钥与额度 | 📝 |
@@ -33,7 +33,8 @@ cp application.example.yml application-local.yml
 | `07-state-machine/` | 第 7 章 · 任务状态机 | 📝 |
 | `08-observability/` | 第 8 章 · 计量与成本 | 📝 |
 
-> 当前阶段：骨架已建，示例代码待第 1 章完稿后开始逐个补齐。
+> **当前状态：只有这份约定文档，示例代码还没开始补。**
+> 第 1、2 章的正文代码是完整的，可以复制到自己的项目里直接跑；这个目录要放的是「每个机制一个独立可运行模块」的那一版。
 
 ## 环境
 

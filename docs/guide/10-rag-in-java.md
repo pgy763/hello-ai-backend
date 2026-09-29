@@ -4,7 +4,7 @@ title: 第 10 章 · 把 RAG 接进 Java 服务
 
 # 第 10 章 · 把 RAG 接进 Java 服务
 
-::: info 本章状态：撰写中
+::: info 本章状态：已规划（仅提纲）
 下面是完整提纲。想优先看到这一章？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 

@@ -4,7 +4,7 @@ title: 第 8 章 · 可观测性：token 计量与成本核算
 
 # 第 8 章 · 可观测性：token 计量与成本核算
 
-::: info 本章状态：撰写中
+::: info 本章状态：已规划（仅提纲）
 下面是完整提纲。想优先看到这一章？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
