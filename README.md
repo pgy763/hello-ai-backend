@@ -52,7 +52,7 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 | --- | --- | --- | --- |
 | 1 | [选型：Spring AI vs LangChain4j vs 裸 HTTP](docs/guide/01-selection.md) | 一张按团队规模和技术栈说话的决策表 | ✅ |
 | 2 | [第一个请求：从 Controller 到 SSE 流式响应](docs/guide/02-first-request.md) | 可流式返回的前后端联调方案，含线程池与 Nginx 配置 | ✅ |
-| 3 | [统一多模型接入](docs/guide/03-multi-provider.md) | Provider 抽象层，换模型不改业务代码 | 📝 🔜 下一章 |
+| 3 | [统一多模型接入](docs/guide/03-multi-provider.md) | Provider 抽象层，换模型不改业务代码 | 🚧 🔜 下一章 |
 
 ### 第二部分 · 生产必备的五个机制（全书核心）
 
@@ -82,8 +82,8 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 3 篇（序章 + 第 1、2 章）· 撰写中 1 章（第 13 章，已放出 6 道样题）· 仅提纲 11 章。
-下一个要写的是 **第 3 章 · 统一多模型接入**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
+**当前进度**：已完稿 3 篇（序章 + 第 1、2 章）· 撰写中 2 章（第 3 章已放出 3.1、3.2 两节；第 13 章已放出 6 道样题）· 仅提纲 10 章。
+下一个要写的是 **第 3 章 · 统一多模型接入** 的 3.3–3.6；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
 
 > 状态按「仓库里实际有什么」标注，不按「打算写什么」标注 —— 点进去发现只有提纲，才是真的浪费时间。
 
