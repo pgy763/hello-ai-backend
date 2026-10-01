@@ -340,7 +340,7 @@ es.onerror = () => es.close();
 new EventSource(`/ai/chat/stream?q=${q}&token=${token}`)   // ⚠️ 有风险
 ```
 
-这样能跑，但有两个问题：**token 会出现在 Nginx 访问日志、浏览器历史和 Referer 里。** 如果是内部系统、token 短效，可以接受；面向公网的产品不建议。
+这样能跑，但代价很明确：**token 会落在 Nginx 访问日志、浏览器历史和 Referer 里** —— 日志一旦落盘就清不干净了。内部系统、token 短效且低权限，还能接受；面向公网的产品不要这么干。
 
 ### 方案 B：`fetch` + `ReadableStream`（推荐）
 

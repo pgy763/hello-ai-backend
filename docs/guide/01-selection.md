@@ -350,11 +350,11 @@ public interface AiClient {
 
 ## 本章代码
 
-`examples/01-selection/` —— 上面三段代码的完整可运行版本，三个独立的 Maven 模块，共用同一份 `application.yml` 模板。
+`examples/01-selection/` **还没建**。计划是放上面三段代码的完整可运行版本 —— 三个独立的 Maven 模块，共用同一份 `application.yml` 模板。
 
-> 目录正在整理中。当前你可以直接复制本章的代码块到自己的项目里运行，依赖只需要一个 `spring-boot-starter-web`（裸 HTTP 版本）。
->
-> 需要 Spring AI 与 LangChain4j 的依赖坐标时，请以官方 Maven Central 上的最新稳定版为准。
+现在想跑，直接复制本章的代码块到自己项目里就行：裸 HTTP 版本只需要一个 `spring-boot-starter-web`。
+
+> Spring AI 与 LangChain4j 的依赖坐标，以官方 Maven Central 上的最新稳定版为准 —— 这两个项目迭代都快，别照抄任何文章里的版本号。
 
 ---
 
