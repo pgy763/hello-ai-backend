@@ -5,7 +5,7 @@ title: 第 3 章 · 统一多模型接入
 # 第 3 章 · 统一多模型接入
 
 ::: info 本章状态：撰写中
-已放出 **3.1**、**3.2** 两节，3.3–3.6 还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **3.1**、**3.2**、**3.3** 三节，3.4–3.6 还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -88,9 +88,71 @@ title: 第 3 章 · 统一多模型接入
 2. **每接一家补一组契约测试**：非流式、流式、带 tool call、超长输入被截断。四个用例过完再上线，别等线上发现。
 3. **报错原文原样记下来**，log 里至少带上厂商名和原始响应体。归一化之前先别丢 —— 你丢掉的那段，正是排查时唯一有信息量的东西。
 
+## 3.3 Provider 接口怎么设计
+
+先给结论：**`chat` 和 `stream` 拆成两个方法，`embed` 另开一个接口。**
+
+理由不是审美，是返回类型。
+
+### 为什么不能只留一个方法
+
+最省事的写法是一个方法打天下：
+
+```java
+public interface LlmProvider {
+    Object chat(ChatRequest req);   // 想同时兼容同步和流式
+}
+```
+
+这个「兼容」的代价是连锁的：返回 `Object`，调用方每次都要 `instanceof` 判一下再强转；接口文档写不清它到底返回什么；用错了编译期查不出来，运行时才炸。类型系统本来能免费帮你挡掉这类 bug，这么写等于主动放弃。
+
+真正的分歧有两点：
+
+| | 非流式 | 流式 |
+| --- | --- | --- |
+| 返回 | 一次拿到完整文本 | 一个元素序列，边到边处理 |
+| 调用方关心 | 最终结果 | 首字延迟、增量内容 |
+| 失败时机 | 一次调用一次结果 | **已经吐了一半才失败** |
+
+最后一行是关键 —— 流式的错误发生在序列**中间**，返回值必须能承载「中途失败」这件事。这个语义塞不进一个「要么返回字符串要么返回流」的签名里。
+
+### 三个方法的样子
+
+```java
+public interface LlmProvider {
+    ChatResponse chat(ChatRequest req);
+    Stream<String> stream(ChatRequest req);
+    EmbeddingResponse embed(EmbeddingRequest req);
+}
+```
+
+`embed` 单独开一个接口（而不是塞进 `LlmProvider`）的理由：嵌入是另一类能力 —— 输入输出都是向量，没有流式，也没有 `temperature`、`system` 这些概念。硬塞在一起，每个只想做对话的厂商适配器都得写一个 `embed` 抛 `UnsupportedOperationException`，接口的诚实度反而下降。
+
+`chat` 和 `stream` 的参数用**请求对象**，不用一长串方法参数：
+
+```java
+public record ChatRequest(
+        String model,
+        List<Message> messages,
+        double temperature,
+        Integer maxTokens,
+        List<Tool> tools) {}
+```
+
+理由硬且只有一个：**大模型的参数在持续增加**。今天加 `tools`，明天加 `responseFormat`，后天加 `reasoningEffort`。用对象传参，加字段时不动任何调用方签名；用平铺参数，每加一个就要改所有实现和所有调用点，很快会撞上「参数太多只能靠位置记」的泥潭。
+
+> 反过来：如果一个接口只有两个参数、三年没变过，别为它造请求对象 —— 那是过度设计。判断标准是「参数会不会继续长」，不是「对象看起来更专业」。
+
+### 流式返回 `Stream<String>` 还是 `Flux<String>`
+
+Spring AI 用 `Flux`，LangChain4j 走回调 handler，裸 HTTP 你返回什么都行。
+
+**MVC 项目里 `Stream<String>` 就够了，别为了「现代」强上 Reactor。**
+
+一旦接口返回 `Flux`，整条链路都得跟着变响应式：Controller 要么改成 WebFlux，要么在 MVC 里加适配（那个适配本身就有坑，见踩坑手册里「MVC 项目里返回 `Flux` 报 `No converter for`」那条）；Service 的返回类型、异常处理、事务边界、线程模型全要重做。换来的是背压能力 —— 而大多数业务是「用户点一下问一句」，根本不产生需要背压的流量。**没有背压需求的时候，Reactor 的成本是确定的，收益是假设的。**
+
 ## 后续小节（提纲）
 
-- **3.3 Provider 接口怎么设计** —— 一个方法还是三个方法？为什么要把流式和非流式分开
 - **3.4 注册表与配置化** —— 从 `application.yml` 到运行时路由
 - **3.5 兼容性差异实录** —— 上面那张表的完整版，附每条的实测报错与绕法
 - **3.6 结论** —— 抽象到什么程度就该停手
