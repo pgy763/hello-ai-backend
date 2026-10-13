@@ -122,6 +122,10 @@ public interface LlmProvider {
 public interface LlmProvider {
     ChatResponse chat(ChatRequest req);
     Stream<String> stream(ChatRequest req);
+}
+
+// 嵌入是另一类能力，单独开一个接口
+public interface EmbeddingProvider {
     EmbeddingResponse embed(EmbeddingRequest req);
 }
 ```
