@@ -116,7 +116,7 @@ public interface LlmProvider {
 
 最后一行是关键 —— 流式的错误发生在序列**中间**，返回值必须能承载「中途失败」这件事。这个语义塞不进一个「要么返回字符串要么返回流」的签名里。
 
-### 三个方法的样子
+### 三个方法，两个接口
 
 ```java
 public interface LlmProvider {
