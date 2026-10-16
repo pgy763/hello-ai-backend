@@ -5,7 +5,7 @@ title: 第 3 章 · 统一多模型接入
 # 第 3 章 · 统一多模型接入
 
 ::: info 本章状态：撰写中
-已放出 **3.1**、**3.2**、**3.3** 三节，3.4–3.6 还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **3.1**、**3.2**、**3.3**、**3.4** 四节，3.5–3.6 还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -155,9 +155,107 @@ Spring AI 用 `Flux`，LangChain4j 走回调 handler，裸 HTTP 你返回什么�
 
 一旦接口返回 `Flux`，整条链路都得跟着变响应式：Controller 要么改成 WebFlux，要么在 MVC 里加适配（那个适配本身就有坑，见踩坑手册里「MVC 项目里返回 `Flux` 报 `No converter for`」那条）；Service 的返回类型、异常处理、事务边界、线程模型全要重做。换来的是背压能力 —— 而大多数业务是「用户点一下问一句」，根本不产生需要背压的流量。**没有背压需求的时候，Reactor 的成本是确定的，收益是假设的。**
 
+## 3.4 注册表与配置化
+
+目标一句话：**新接一家厂商，只改 `application.yml`，不动 Java 代码。**
+
+### 配置长什么样
+
+```yaml
+llm:
+  providers:
+    deepseek:
+      base-url: https://api.deepseek.com
+      api-key: ${DEEPSEEK_API_KEY}
+      model: deepseek-chat
+      supports-stream-options: false
+    qwen:
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: ${DASHSCOPE_API_KEY}
+      model: qwen-plus
+      supports-stream-options: true
+  routing:
+    default: deepseek
+    by-task:
+      classify: qwen     # 分类走便宜的
+      extract: qwen
+      reason: deepseek   # 多步推理走强的
+```
+
+两个要点：
+
+1. **`api-key` 写 `${DEEPSEEK_API_KEY}`，不写明文。** 这个 yml 是要进 git 的。明文 key 一旦提交，删掉当前代码没用 —— 得重写 git 历史（坑见踩坑手册里「密钥提交进了 git 历史」那条）。本地用环境变量，线上用 K8s Secret 或密钥管理服务注入环境变量，两条路都行，别把 key 写进文件。
+2. **`supports-stream-options` 这类开关，就是 3.2 那张能力表的落地点。** 厂商差异不写成散落的 `if (vendor.equals(...))`，写进配置 —— 上面那段 yaml 加一行就够了。
+
+### 绑定到代码
+
+```java
+@ConfigurationProperties(prefix = "llm")
+public record LlmProperties(Map<String, ProviderConfig> providers, RoutingConfig routing) {
+
+    public record ProviderConfig(String baseUrl, String model, String apiKey,
+                                 boolean supportsStreamOptions) {}
+
+    public record RoutingConfig(String defaultProvider, Map<String, String> byTask) {}
+}
+```
+
+Spring Boot 3 上 `record` + `@ConfigurationProperties` 走**构造器绑定**，不用写一堆 setter，一个配置类体量直接砍半。字段名和 yaml 的 kebab-case 会自动对上（`base-url` → `baseUrl`），不用加注解。用它要在主类或配置类上开 `@EnableConfigurationProperties` / `@ConfigurationPropertiesScan`。
+
+### 注册表交给 Spring，别自己 new 一个 Map
+
+每个厂商一个实现类，交给容器管，**Bean 名就取配置里的 key**：
+
+```java
+@Component("deepseek")
+class DeepSeekProvider implements LlmProvider { /* ... */ }
+
+@Component("qwen")
+class QwenProvider implements LlmProvider { /* ... */ }
+```
+
+然后注入 `Map<String, LlmProvider>` —— Spring 会把所有该类型的 Bean 塞进来，**map 的 key 就是 Bean 名**：
+
+```java
+@Service
+public class ModelRouter {
+    private final Map<String, LlmProvider> providers;   // Bean 名 → 实现
+
+    public ModelRouter(Map<String, LlmProvider> providers) {
+        this.providers = providers;
+    }
+
+    public ChatResponse chat(String task, ChatRequest req) {
+        String name = props.routing().byTask()
+                .getOrDefault(task, props.routing().defaultProvider());
+        return providers.get(name).chat(req);
+    }
+}
+```
+
+这一步是配置化的关键：**注册表不是你维护的 `HashMap`，是 Spring 容器。** 接一家厂商 = 写一个 `@Component` + 加一段 yaml，`ModelRouter` 一行都不用改。
+
+### 业务层按「任务」调用，不按「模型名」调用
+
+注意上面 `chat` 的第一个参数是 `task` 而不是模型名。业务代码写：
+
+```java
+router.chat("classify", req);   // ✅ 我要做分类
+// router.chat("qwen-plus", req);  // ❌ 别这么写
+```
+
+差别在换模型那天暴露：前者改 yaml，后者改所有调用点。任务名的粒度也不用太细 —— 三五个够了，每个都配一遍等于没抽象。
+
+### 配置化到哪里该停
+
+配置化不免费，这几种情况反而应该更硬编码：
+
+- **只有一家厂商、模型名一年不动。** 注册表 + 路由表 + 任务映射全是负资产。直接 `@Value` 写死，等第二家进来再抽 —— 这不是技术债，是延迟决策。
+- **把 prompt 也搬进 yaml。** 多行 prompt 在 yaml 里得用 `|` 块，缩进错一格就是「静默生效的错 prompt」，没有任何编译期检查，排查时你对着日志看不出 prompt 被截了。prompt 放代码或独立模板文件，配置里只放「用哪个模型」。
+- **为了热更新引一套配置中心。** `@RefreshScope` + 配置中心确实能做到改完即刻生效。但先问自己：模型配置变更一个月几次？**多数项目重启 30 秒能解决的事，不值得换来一个组件的运维成本。** 真到了多环境、多租户、要按用户切模型的时候再上。
+
 ## 后续小节（提纲）
 
-- **3.4 注册表与配置化** —— 从 `application.yml` 到运行时路由
 - **3.5 兼容性差异实录** —— 上面那张表的完整版，附每条的实测报错与绕法
 - **3.6 结论** —— 抽象到什么程度就该停手
 
