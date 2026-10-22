@@ -35,7 +35,7 @@ export default defineConfig({
         text: '第二部分 · 生产必备的五个机制',
         collapsed: false,
         items: [
-          { text: '4. 虚拟密钥：多租户与额度', link: '/guide/04-virtual-key' },
+          { text: '4. 虚拟密钥：多租户、额度与审计', link: '/guide/04-virtual-key' },
           { text: '5. 降级链：主备模型自动切换', link: '/guide/05-fallback' },
           { text: '6. 熔断与限流：Redis + Lua 令牌桶', link: '/guide/06-ratelimit' },
           { text: '7. 多步任务编排：状态机与断点续跑', link: '/guide/07-state-machine' },
@@ -57,7 +57,7 @@ export default defineConfig({
           { text: '11. 压测与容量规划', link: '/guide/11-capacity' },
           { text: '12. 生产事故复盘集', link: '/guide/12-postmortem' },
           { text: '13. 面试题：AI 后端 30 问', link: '/guide/13-interview' },
-          { text: '14. 毕业设计', link: '/guide/14-capstone' }
+          { text: '14. 毕业设计：给自己系统接上 AI', link: '/guide/14-capstone' }
         ]
       }
     ],

@@ -401,15 +401,20 @@ while (true) {
 location /ai/chat/stream {
     proxy_pass http://backend;
 
+    proxy_http_version 1.1;         # 默认是 1.0，不改这行下面那行白写
+    proxy_set_header Connection '';  # 清掉 close，Nginx 才肯复用上游连接
     proxy_buffering off;            # 🔴 最关键的一行
     proxy_cache off;
     proxy_read_timeout 300s;        # 长回答别被掐断
-    proxy_set_header Connection '';  # 保持长连接，禁掉默认的 close
     chunked_transfer_encoding on;
 }
 ```
 
 **`proxy_buffering off` 是那个罪魁祸首。** Nginx 默认会缓冲上游响应直到攒够一定大小才转发给客户端 —— 对流式接口来说，这就是「把流憋成了一次性返回」。**这个坑每年都会浪费无数人的一个下午。**
+
+`proxy_http_version` 那行不是凑数的。Nginx 到上游默认走 HTTP/1.0，而 1.0 没有分块传输，也不复用连接。在 1.0 上手写 `Connection ''`，效果是每个请求都新建一条到后端的连接 —— 流式照样能出字，但跑上几分钟之后 `TIME_WAIT` 堆在应用服务器上，所有接口一起变慢。这两行必须成对出现。
+
+顺带一个容易被忽略的：如果 Nginx 开了 `gzip`，并且 `gzip_types` 里包含 `text/event-stream`，压缩本身也会攒够一块才输出，等于在 buffering 之上再加一层延迟。检查一下压缩白名单，把 `text/event-stream` 摘出去。
 
 ### 网关 / 负载均衡
 
