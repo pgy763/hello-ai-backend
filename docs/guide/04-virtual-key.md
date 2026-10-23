@@ -5,7 +5,7 @@ title: 第 4 章 · 虚拟密钥：多租户、额度与审计
 # 第 4 章 · 虚拟密钥：多租户、额度与审计
 
 ::: info 本章状态：撰写中
-已放出 **4.1、4.4** 两节，4.2、4.3、4.5–4.7 还是提纲。4.4 提前放出来，是因为「预扣还是后结算」决定 4.2 那张表要留几个字段 —— 先定策略再画表，省得改两遍。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **4.1、4.2、4.4** 三节，4.3、4.5–4.7 还是提纲。4.4 提前放出来，是因为「预扣还是后结算」决定 4.2 那张表要留几个字段 —— 先定策略再画表，省得改两遍。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -63,6 +63,82 @@ llm:
 
 粗略的分界线：**出现第二个「需要独立知道花了多少钱」的主体时，就该上虚拟 key 了。** 这个主体可能是业务线、是客户，也可能只是「老板想知道」。只要有人要一份能对上的账，共享真 key 就不够了。
 
+## 4.2 表结构：三张表，加一张你可能会省的
+
+先把结论放这：**密钥表、额度桶、预扣单据、调用日志**，四张。前两张是必需的，第三张是 4.4 混合方案的直接产物，第四张可以先不落库（见本节末尾）。MySQL 8，`utf8mb4`，引擎默认 InnoDB。
+
+### 密钥表：别存明文
+
+```sql
+CREATE TABLE llm_virtual_key (
+  id          BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  key_hash    CHAR(64)    NOT NULL COMMENT 'SHA-256(明文 key)，明文不落库',
+  key_prefix  VARCHAR(16) NOT NULL COMMENT 'vk_billing_7f3a，日志和后台展示用',
+  tenant      VARCHAR(64) NOT NULL COMMENT '业务线标识，一路带进日志',
+  status      TINYINT     NOT NULL DEFAULT 1 COMMENT '1 启用 0 已吊销',
+  created_at  DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  revoked_at  DATETIME    NULL,
+  UNIQUE KEY uk_hash (key_hash),
+  KEY idx_tenant (tenant)
+);
+```
+
+两个字段值得解释：
+
+- **`key_hash` 而不是 `key`。** 验 key 走 `uk_hash`，一次等值查询。用 SHA-256 而不是 bcrypt —— 这点和密码不一样：虚拟 key 是你生成的 32 字节随机串，熵已经足够，不需要慢哈希；而且每次请求都要验一次，bcrypt 百毫秒级的成本放在网关上等于自加延迟，还没法建索引。代价是**明文找不回来**，只能在创建时给一次。产品经理迟早会提「后台要能再看到 key」，这个需求要顶回去，不然前面的都白做。
+- **`key_prefix`。** 日志里打印 `vk_billing_7f3a...` 这 16 个字符，出事后能一眼对上是谁，同时不足以拿来爆破。没有它，你的日志只能记 `key_id=37`，排查时还得反查一次库。
+
+### 额度桶：`used` 一列是不够的
+
+4.4 选了混合方案，那么「已用」就不是一个数，是三个：
+
+```sql
+CREATE TABLE llm_quota_bucket (
+  id           BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  key_id       BIGINT UNSIGNED NOT NULL,
+  period       VARCHAR(8)  NOT NULL COMMENT 'day / month',
+  period_start DATE        NOT NULL,
+  total_tokens BIGINT      NOT NULL COMMENT '配额',
+  reserved     BIGINT      NOT NULL DEFAULT 0 COMMENT '预扣未结算',
+  settled      BIGINT      NOT NULL DEFAULT 0 COMMENT '已结算用量',
+  UNIQUE KEY uk_key_period (key_id, period, period_start)
+);
+```
+
+**可用额度 = `total_tokens - reserved - settled`。** 放行判断写成 `update ... set reserved = reserved + ? where id = ? and total_tokens - reserved - settled >= ?`，靠这一条语句的原子性挡住大半竞态 —— 剩下那半（结算时的归还顺序）是 4.5 要处理的。
+
+周期为什么是**一行一个周期、到点插新行**，而不是一行来回重置？因为重置就把历史抹了。月底老板问「这条线这个月比上月多花多少」，你要能查；出事故复盘「额度是几点被吃光的」，你也要能查。多存几十行没有成本，丢数据才要命。
+
+### 预扣单据：能扫、能审
+
+```sql
+CREATE TABLE llm_quota_hold (
+  id         BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  bucket_id  BIGINT UNSIGNED NOT NULL,
+  request_id CHAR(32)    NOT NULL COMMENT '链路追踪 ID，和调用日志对得上',
+  amount     BIGINT      NOT NULL COMMENT '预扣 token 数',
+  status     TINYINT     NOT NULL DEFAULT 0 COMMENT '0 PENDING 1 SETTLED 2 EXPIRED',
+  created_at DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  expire_at  DATETIME    NOT NULL,
+  UNIQUE KEY uk_request (request_id),
+  KEY idx_expire (status, expire_at)
+);
+```
+
+`idx_expire` 的列顺序是 `(status, expire_at)`，不是 `(expire_at)`。定时任务扫的是「PENDING 且已过期」，`status` 放前面能把已经结算完的行整段跳过；反过来只按时间扫，表里 99% 是历史行，索引选择性差到等于全表扫。这种错在小数据量下看不出来，等显形时你已经在翻慢日志了。
+
+`uk_request` 顺带解决了另一件事：**同一条请求重复回调时不会重复结算**，插入冲突直接忽略即可。
+
+### 调用日志：先给它单独的写入路径
+
+日志字段的最小集在 4.6 展开，这里只说结构上的一个决定：**日志表的写入量和额度表差两个数量级**，一条请求一条日志，一次调用一轮额度。别让它们共用同一个库实例一起备份 —— 日志可以只留 30 天、可以归档，额度表不行。起步阶段最省事的做法是**日志先异步写、甚至先写本地文件**，真要按业务线出报表了再入库。
+
+### 什么情况下这几张表都嫌多
+
+- **一个团队、一把 key、一个月度总额。** 密钥可以就是配置里的一行，额度就是一张单行表，`period`、`hold` 全都不需要。先用这批代码上线，比先把表设计完美更值。
+- **额度扣减放在 Redis。** 第 6 章的令牌桶就在 Redis 里做。那时候 MySQL 这张桶表只当**账本**，`reserved` 别再在两边各维护一份 —— 双写必然不一致，而且不一致的时候你分不清哪边是对的。
+- **调用日志日增不到十万行。** 单表加定期删除就够，分区表带来的运维复杂度远超它省下的那点查询时间。
+
 ## 4.4 额度控制：预扣还是后结算
 
 额度表有一个绕不过去的决定：花掉的额度在**什么时候**从池子里扣。这不是实现细节，它决定了并发下会不会超卖，也决定了 4.2 那张表要留几个字段、要不要状态机。
@@ -104,8 +180,7 @@ llm:
 
 ## 后续小节（提纲）
 
-- **4.2 表结构设计** —— 密钥表、额度表、调用日志表，以及它们的关系（按 4.4 的结论，额度表要有 `reserved` / `settled` 两列和一个过期时间）
-- **4.3 鉴权链路** —— 从拦截器到上下文传递，怎么把「这条请求属于谁」带到最底层
+- **4.3 鉴权链路** —— 从拦截器到上下文传递，怎么把「这条请求属于谁」带到最底层（要接住 4.2 的 `key_prefix` 和 `tenant`）
 - **4.5 并发下的额度竞态** —— 为什么 `select ... where used < quota` 是不够的
 - **4.6 审计日志最小字段集** —— 少了任何一个，月底对账都会卡住
 - **4.7 结论** —— 什么规模的团队可以先用一张表凑合

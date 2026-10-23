@@ -64,7 +64,7 @@ title: 全书目录
 
 [序章](/guide/00-intro) → [第 1 章 选型](/guide/01-selection) → [第 5 章 降级](/guide/05-fallback) → [第 8 章 计量](/guide/08-observability)
 
-> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章 4.1、4.4](/guide/04-virtual-key)。第 5、8 章现在只有提纲，各章状态以上面的目录为准。
+> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章 4.1、4.2、4.4](/guide/04-virtual-key)。第 5、8 章现在只有提纲，各章状态以上面的目录为准。
 
 ## 已经在做 AI 项目？
 
