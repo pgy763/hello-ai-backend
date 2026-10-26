@@ -5,7 +5,7 @@ title: 第 4 章 · 虚拟密钥：多租户、额度与审计
 # 第 4 章 · 虚拟密钥：多租户、额度与审计
 
 ::: info 本章状态：撰写中
-已放出 **4.1、4.2、4.4** 三节，4.3、4.5–4.7 还是提纲。4.4 提前放出来，是因为「预扣还是后结算」决定 4.2 那张表要留几个字段 —— 先定策略再画表，省得改两遍。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **4.1–4.4** 四节，4.5–4.7 还是提纲。4.4 先于 4.3 放出来，是因为「预扣还是后结算」决定 4.2 那张表要留几个字段 —— 先定策略再画表，省得改两遍。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -139,6 +139,106 @@ CREATE TABLE llm_quota_hold (
 - **额度扣减放在 Redis。** 第 6 章的令牌桶就在 Redis 里做。那时候 MySQL 这张桶表只当**账本**，`reserved` 别再在两边各维护一份 —— 双写必然不一致，而且不一致的时候你分不清哪边是对的。
 - **调用日志日增不到十万行。** 单表加定期删除就够，分区表带来的运维复杂度远超它省下的那点查询时间。
 
+## 4.3 鉴权链路：一条请求怎么带着身份走到底
+
+表设计好了，密钥发下去了，接下来是那条最容易写歪的管道：**请求进来时验一次，然后让「它是谁的」这个信息活着走到日志里。**
+
+三个决定要先定下来，错了任何一个都要返工：
+
+1. **在哪验** —— Filter 还是 Interceptor
+2. **验完的信息放哪** —— `ThreadLocal` 还是显式传参
+3. **流式请求**为什么会让前两个决定同时失效
+
+### 在哪验：用 Filter，别用 Interceptor
+
+```java
+@Component
+@RequiredArgsConstructor
+public class VirtualKeyFilter extends OncePerRequestFilter {
+
+    private final VirtualKeyRepository keys;
+    private final ObjectMapper json;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest req, HttpServletResponse resp,
+                                    FilterChain chain) throws IOException, ServletException {
+        String raw = bearer(req.getHeader("Authorization"));
+        if (raw == null) { reject(resp, 401, "missing_key"); return; }
+
+        KeyRecord k = keys.findByHash(sha256(raw));       // uk_hash 等值查询
+        if (k == null || k.status() != 1) { reject(resp, 401, "invalid_key"); return; }
+
+        req.setAttribute(AccessContext.ATTR,
+                new AccessContext(k.id(), k.tenant(), k.keyPrefix()));
+        chain.doFilter(req, resp);
+    }
+
+    private void reject(HttpServletResponse resp, int code, String reason) throws IOException {
+        resp.setStatus(code);
+        resp.setContentType("application/json;charset=UTF-8");
+        json.writeValue(resp.getWriter(), Map.of("error", reason));
+    }
+}
+```
+
+`HandlerInterceptor` 看着更「Spring」，但有两个毛病：
+
+**一、异步请求会走两遍。** SSE 和 `DeferredResult` 这类异步请求，容器在结果写完之后会把请求**再 dispatch 一次**，`preHandle` 于是第二次执行。`AsyncHandlerInterceptor.afterConcurrentHandlingStarted` 这个方法存在，就是为了处理这件事。你要是在 `preHandle` 里顺手扣了额度、发了一条审计，一次提问就记了两次账。
+
+**二、管不到 Controller 之外。** 静态资源、`/actuator`、`/error` 都不经过 `preHandle`。其中 `/actuator` 恰恰是必须挡的 —— 里面可能有 env 和 heapdump。
+
+`OncePerRequestFilter` 默认跳过 async dispatch（`shouldNotFilterAsyncDispatch()` 返回 `true`），天然只跑一次；而且它对所有路径生效，放行谁由你显式列白名单。
+
+顺手一个 header 命名约定：**别用下划线**。Nginx 的 `underscores_in_headers` 默认是 `off`，带下划线的 header 会被静默丢掉 —— 本地通、上线 401，且 Nginx 不留任何日志。`X-Tenant-Id` 好，`X_Tenant_Id` 别碰。
+
+### 身份别放 `ThreadLocal`
+
+验完的 `tenant` 要一路到日志、到指标、到账单。最省事的写法是 `ThreadLocal` + 一个静态 `get()`，然后在任何地方随手 `AccessContext.tenant()`。这个写法在你写第二个线程之前都很好用。
+
+它失效的场景恰好是重点场景：SSE 的写回跑在你的线程池里，`@Async` 换线程，Reactor 的调度器更不用说。**失效的后果不是抛异常，是 `tenant` 变成 `null`、日志打出一条没有归属的记录** —— 不出声的 bug，上线一个月后对账才发现有一批账挂不上。
+
+所以 `AccessContext` 当普通参数往下传：
+
+```java
+public interface LlmClient {
+    String complete(AccessContext ctx, String prompt);
+    void stream(AccessContext ctx, String prompt, Consumer<String> onChunk);
+}
+```
+
+签名难看？这个难看是设计在提醒你：**这次调用要花钱，它本来就该显式带上「谁在花」。** 真觉得每个方法都多一个参数太吵，退一步的方案是在网关入口处把 `ctx` 塞进一个请求作用域的 Bean（`@RequestScope`），但流式回调里仍然要捕获一次 —— 见下一节。
+
+### 流式：在请求线程上取一次，捕获进闭包
+
+```java
+AccessContext ctx = AccessContext.current();   // 仍在请求线程，此时一定拿得到
+
+SseEmitter emitter = new SseEmitter(300_000L);
+executor.submit(() -> {
+    try {
+        llm.stream(ctx, prompt, chunk -> send(emitter, chunk));   // 变量捕获，不依赖线程
+    } catch (Exception e) {
+        emitter.completeWithError(e);
+    }
+});
+```
+
+`RequestContextHolder` 在 `Callable` 返回值那种异步里，Spring 会帮你继承请求上下文；`SseEmitter` 跑在你自己的线程池上时不保证。这个「保不保证」还跟版本和具体写法有关，**不要赌，捕获一个局部变量最便宜。**
+
+代价是长的生成任务会一直持有 `ctx` 和 `emitter` 的引用，内存里多留一会儿。它只有几个字段，无所谓；但别顺手把整个 `HttpServletRequest` 也捕获进去 —— 那会把请求体和连接一起钉在堆上，直到生成结束。
+
+### 查库这一步，什么时候该加缓存
+
+链路定下来后，每个请求的成本是：一次 SHA-256（微秒级）+ 一次走唯一索引的等值查询（经验值 1ms 上下）。网关 QPS 上到几百，这条查询就是第一个热点。
+
+用 Caffeine 缓存 `key_hash` → 记录，TTL 30–60 秒。**代价要说清楚：吊销的最长生效延迟等于 TTL。** 所以「吊销立即生效」和「缓存」只能选一个 —— 想都要，就在吊销接口里主动 `invalidate(keyHash)`，别去缩短 TTL（缩短了等于没缓存）。
+
+### 什么情况下这条链路是过度设计
+
+- **单租户、内部服务。** 一个静态 token，`if (!expected.equals(token)) return 401;`，够了。`AccessContext` 这层要等出现第二个「需要独立知道花了多少」的主体才成立 —— 和 4.1 那条分界线是同一根。
+- **只要审计、不要限额。** 那 `key` 表还是要有（不然「谁」从哪来），但额度桶和预扣单据可以整块砍掉，`tenant` 直接写进日志表。省两张表，不少功能。
+- **接口不对外，只有自己的前端在调。** 别为了「规范」把 key 在浏览器里传来传去。前端带 session，网关在服务端换 key，虚拟 key 只发给机器对机器的调用方。
+
 ## 4.4 额度控制：预扣还是后结算
 
 额度表有一个绕不过去的决定：花掉的额度在**什么时候**从池子里扣。这不是实现细节，它决定了并发下会不会超卖，也决定了 4.2 那张表要留几个字段、要不要状态机。
@@ -180,7 +280,6 @@ CREATE TABLE llm_quota_hold (
 
 ## 后续小节（提纲）
 
-- **4.3 鉴权链路** —— 从拦截器到上下文传递，怎么把「这条请求属于谁」带到最底层（要接住 4.2 的 `key_prefix` 和 `tenant`）
 - **4.5 并发下的额度竞态** —— 为什么 `select ... where used < quota` 是不够的
 - **4.6 审计日志最小字段集** —— 少了任何一个，月底对账都会卡住
 - **4.7 结论** —— 什么规模的团队可以先用一张表凑合
