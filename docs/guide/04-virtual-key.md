@@ -5,7 +5,7 @@ title: 第 4 章 · 虚拟密钥：多租户、额度与审计
 # 第 4 章 · 虚拟密钥：多租户、额度与审计
 
 ::: info 本章状态：撰写中
-已放出 **4.1–4.4** 四节，4.5–4.7 还是提纲。4.4 先于 4.3 放出来，是因为「预扣还是后结算」决定 4.2 那张表要留几个字段 —— 先定策略再画表，省得改两遍。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **4.1–4.4** 四节，剩下的 4.5 竞态 / 4.6 审计字段 / 4.7 结论还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -211,7 +211,7 @@ public interface LlmClient {
 ### 流式：在请求线程上取一次，捕获进闭包
 
 ```java
-AccessContext ctx = AccessContext.current();   // 仍在请求线程，此时一定拿得到
+AccessContext ctx = AccessContext.current();   // 从当前 request 的 attribute 取，不是 ThreadLocal；此刻仍在请求线程上
 
 SseEmitter emitter = new SseEmitter(300_000L);
 executor.submit(() -> {
@@ -223,7 +223,7 @@ executor.submit(() -> {
 });
 ```
 
-`RequestContextHolder` 在 `Callable` 返回值那种异步里，Spring 会帮你继承请求上下文；`SseEmitter` 跑在你自己的线程池上时不保证。这个「保不保证」还跟版本和具体写法有关，**不要赌，捕获一个局部变量最便宜。**
+`RequestContextHolder` 在「Controller 返回 `Callable`」这种异步里，Spring 会帮你继承请求上下文（`Callable` 是在容器管理的线程上跑的，Spring 特意为它做了 WebAsyncManager 集成）；`SseEmitter` 跑在你自己 `submit` 的线程池上时不保证。这个「保不保证」还跟版本和具体写法有关，**不要赌，捕获一个局部变量最便宜。**
 
 代价是长的生成任务会一直持有 `ctx` 和 `emitter` 的引用，内存里多留一会儿。它只有几个字段，无所谓；但别顺手把整个 `HttpServletRequest` 也捕获进去 —— 那会把请求体和连接一起钉在堆上，直到生成结束。
 

@@ -141,6 +141,8 @@ spring:
 ```
 
 > 版本号请查 Maven Central 上的最新稳定版。Spring AI 迭代较快，**不要用动态版本号**，锁死并定期手动升级。
+>
+> 另外，1.x 把这批 starter 改过名（早期版本是 `spring-ai-openai-spring-boot-starter` 这种写法）。照着两年前的教程抄 pom，第一件事通常是「找不到依赖」—— 先确认你看的那份资料写的是哪条版本线。
 
 **优点**：配置写在 `application.yml`，`ChatClient` 可以注入到任何 Service，和 Spring 的监控、事务、Profile 机制天然打通。
 
@@ -156,8 +158,12 @@ spring:
 这两个是最容易在版本升级中行为变化的模块。升级前，优先跑一遍流式输出和工具调用的回归测试，别只看普通对话能不能通。
 :::
 
-::: warning 3. base-url 结尾别画蛇添足
-`spring.ai.openai.base-url` 只要写到厂商域名（或 `/v1`），**框架会自己拼 `/v1/chat/completions`**。你手动写上完整路径，得到的一定是 404。
+::: warning 3. base-url 只写到域名，路径别自己拼
+`spring.ai.openai.base-url` 写 `https://api.deepseek.com` 就够 —— **框架会自己拼 `/v1/chat/completions`**。
+
+写成 `.../v1`，实际请求就变成 `/v1/v1/chat/completions`；写成完整路径，同样 404。两种情况都会让你先怀疑 key 有问题，白白多花半小时。
+
+路径不是 `/v1/chat/completions` 的厂商（比如百炼的 compatible-mode），要改的是「路径」那个配置项，不是往 base-url 里塞路径 —— 这个属性名各版本不一样，以官方最新文档为准。最快的确认方式也不是读文档，是 curl 一次框架实际打出来的那个 URL。
 :::
 
 ::: warning 4. 流式返回的类型，MVC 里直接返回会翻车
