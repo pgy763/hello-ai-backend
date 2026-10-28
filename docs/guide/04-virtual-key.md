@@ -5,7 +5,7 @@ title: 第 4 章 · 虚拟密钥：多租户、额度与审计
 # 第 4 章 · 虚拟密钥：多租户、额度与审计
 
 ::: info 本章状态：撰写中
-已放出 **4.1–4.4** 四节，剩下的 4.5 竞态 / 4.6 审计字段 / 4.7 结论还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **4.1–4.5** 五节，剩下的 4.6 审计字段 / 4.7 结论还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -278,9 +278,130 @@ executor.submit(() -> {
 
 这一节只解决了「什么时候扣」，没解决「怎么扣才不打架」：预扣里「读余额」和「写扣减」两步照样不是原子的，`update ... where used < quota` 也只挡住了一半。那是 4.5 的事。
 
+## 4.5 并发下的额度竞态
+
+4.2 里那条带 `where total_tokens - reserved - settled >= ?` 的 UPDATE 已经挡掉了大部分问题。剩下的坑都在缝里：**两条语句之间、两个事务之间、两个实例之间。** 这些错误单看每一行代码都是对的，只有压测或者账单对不上时才会露头。
+
+### 一、`select` 判余额，是三个动作不是一个
+
+```java
+// 错法
+Long available = jdbc.queryForObject(
+    "select total_tokens - reserved - settled from llm_quota_bucket where id = ?", Long.class, id);
+if (available < need) return reject(402, "quota_exceeded");
+jdbc.update("update llm_quota_bucket set reserved = reserved + ? where id = ?", need, id);
+```
+
+两个并发请求各读到 `1000`，各要 `800`，都通过检查，最后 `reserved` 冲出 600。**这不是「偶尔撞上」，并发一上来就是常态。**
+
+更隐蔽的一层：RR 隔离级别下，这条 `select` 是快照读 —— 它看到的是事务开始时的版本。别的事务刚提交的扣减，这里看不见。所以问题不只是「判断和写入有间隔」，而是**你判断所依据的那个值，本来就可能不是最新的**。
+
+改成一条语句：
+
+```java
+int n = jdbc.update("""
+    update llm_quota_bucket
+       set reserved = reserved + ?
+     where id = ?
+       and total_tokens - reserved - settled >= ?
+    """, need, id, need);
+
+if (n == 0) return reject(402, "quota_exceeded");   // 业务分支，不是异常
+```
+
+成立的原因有两条：`update` 是**当前读**，`reserved` 一定是已提交的最新值；InnoDB 对同一行的更新加行锁，同一行上的这些语句天然串行。判断和写入落在同一个语句里，中间没有窗口。
+
+`n == 0` 一定要走正常分支。额度跑满的业务线一天会撞上几百次，包成异常的话，异常栈会以每秒一条的速度把日志刷满 —— 真正的事故日志就被淹在里面了。
+
+### 二、CAS 失败别重试
+
+见过这样的写法：`for (int i = 0; i < 3; i++) { if (update(...) == 1) break; }`。
+
+这里失败的含义是**额度不够**，不是并发冲突。重试三次仍然不够，唯一的效果是把「立刻 402」拖成「100ms 后 402」，同时把数据库连接多占三倍时长。高并发下，这会把一个额度问题放大成连接池耗尽。
+
+需要重试的是死锁，那是另一类，得靠异常类型区分（见下一节）。
+
+### 三、结算要在一条语句里
+
+```java
+// 错法：两个字段分两次写
+jdbc.update("update llm_quota_bucket set reserved = reserved - ? where id = ?", hold, id);
+// ...中间还有几行别的逻辑
+jdbc.update("update llm_quota_bucket set settled = settled + ? where id = ?", actual, id);
+```
+
+两条语句之间，`available = total - reserved - settled` 会**临时变大** —— 本来被别人预占着的额度看起来空出来了，别的请求趁机挤进来。结果就是那种复现不了的超卖：两个事务各自看都对，合起来账不平。
+
+一条语句写完，放同一个事务里：
+
+```java
+@Transactional
+public void settle(long bucketId, long hold, long actual) {
+    int n = jdbc.update("""
+        update llm_quota_bucket
+           set reserved = reserved - ?, settled = settled + ?
+         where id = ?
+        """, hold, actual, bucketId);
+    if (n == 0) throw new IllegalStateException("bucket missing: " + bucketId);
+}
+```
+
+两个字段同进同出，中间不存在任何能被别的会话观测到的状态。
+
+### 四、两张表一起动，加锁顺序会咬人
+
+预扣要同时碰 `llm_quota_bucket` 和 `llm_quota_hold`。如果预扣这条路径是「先 bucket 后 hold」，而过期回收那条路径是「先 hold 后 bucket」，两个事务就会各持一把、互等对方 —— MySQL 检测到之后回滚其中一个，抛出来的是这句：
+
+```
+Deadlock found when trying to get lock; try restarting transaction
+```
+
+（MySQL 错误码 1213，措辞可能因版本而异。Spring 的异常翻译层会把它转成 `CannotAcquireLockException`，老版本里对应的类是 `DeadlockLoserDataAccessException`，具体类名以你用的 Spring 版本为准。）
+
+三件事按顺序做：
+
+1. **固定顺序**，成本为零。所有碰这两张表的事务，一律先 `bucket` 后 `hold`；一次涉及多个 bucket 时按 `id` 升序。这一条能解掉绝大多数死锁。
+2. **死锁可以重试一次**。它不是业务失败，捕获那个异常重跑一遍，第二次基本都能过。注意别把 `402` 那条分支也包进重试范围 —— 那是两回事。
+3. **别为了躲死锁拆事务**。拆成「不在一个事务里」等于把一个确定的死锁换成一个不确定的超卖。
+
+### 五、过期回收：两个实例会各归还一次
+
+`4.4` 第 3 步那个定时任务，单机跑没问题。部署两台之后，两边同时扫到同一条过期的 `PENDING`，各归还一次 —— 额度凭空多出来一份，而且没有任何报错。
+
+不用上分布式锁，用单据自己的状态做 CAS：
+
+```java
+int claimed = jdbc.update(
+    "update llm_quota_hold set status = 2 where id = ? and status = 0", holdId);
+if (claimed == 0) return;   // 别的实例先抢到了，什么都不做
+// 只有 claimed == 1 的那一个实例，才去执行归还
+```
+
+`and status = 0` 是全部关键：行锁保证只有一个实例能把它从 0 改成 2。这就是第一节那个 CAS，只是对象从额度换成了单据。
+
+MySQL 8 上还有个更省事的写法，批量取待处理行时用 `select ... for update skip locked` —— 别的实例直接跳过被别人锁住的行，不用一条条去抢。
+
+### 怎么证明写对了
+
+代码审查看不出这类问题，只能压。一个够用的验证：把额度设成「刚好够 25 个请求的量」，起 50 个线程同时打同一把 key，全部结束后查一次：
+
+```sql
+select total_tokens, reserved, settled, total_tokens - reserved - settled as available
+  from llm_quota_bucket where id = ?;
+```
+
+合格的输出只有两种：`available >= 0` 且通过的请求数 ≤ 25；或者 `available < 0`（说明还有洞）。第三种情况最坑 ——**`available` 看着正常，但通过的请求数超了**，那说明有某条路径绕过了 CAS。每次改动这块代码都跑一遍，比读十遍代码有用。
+
+### 什么情况下这一节整段跳过
+
+- **单实例部署，QPS 个位数。** 一条带 `where` 的 UPDATE 就够，结算也可以只用后结算。别在这上面花时间 —— 4.4 的表格已经给了这个判断。
+- **额度搬到 Redis。** 第 6 章的令牌桶就在 Redis 里。`INCRBY` 和 Lua 脚本本身是原子的，这一节的 CAS 全部不需要。代价只有一个：**Redis 和 MySQL 只能有一个是准的**，别再双写两边。「MySQL 记流水、Redis 管实时余额」听起来很稳，实际上不一致的那几分钟你根本分不清哪边对。
+- **只有一把 key 的业务。** 没有多租户竞争，`update ... where` 一条语句，到此为止。
+
+有个反例值得单独说：**别拿 `synchronized` 或者 `ReentrantLock` 顶这一节。** 单机上它确实能挡住，测起来一切正常；等哪天加到两个实例（或者运维开了双副本），它悄无声息地失效，而且没有任何告警 —— 因为你从来没写过「我以为这把锁是全局的」这句话。这类锁的时间炸弹在扩容那天才炸。
+
 ## 后续小节（提纲）
 
-- **4.5 并发下的额度竞态** —— 为什么 `select ... where used < quota` 是不够的
 - **4.6 审计日志最小字段集** —— 少了任何一个，月底对账都会卡住
 - **4.7 结论** —— 什么规模的团队可以先用一张表凑合
 
