@@ -56,6 +56,26 @@ Spring 生态里做 SSE，有两条路：
 
 这一章我们用 `SseEmitter` —— 因为它对应的是本书预设的读者：**手上有一套存量 Spring Boot 系统。**
 
+先把回调契约定下来，后面所有代码都用它：
+
+```java
+/** 流式回调。三件事都必须有位置可放：下一段、说完了、出错了 */
+public interface StreamHandler {
+    void onNext(String token);
+    void onComplete();
+    void onError(Throwable t);
+}
+
+/** 客户端已经走了。用它把控制流从 onNext 里抛出去，好让上游停止调用模型 */
+public class StreamAbortedException extends RuntimeException {
+    public StreamAbortedException(Throwable cause) {
+        super("客户端已断开", cause);
+    }
+}
+```
+
+为什么 `StreamAbortedException` 继承 `RuntimeException` 而不是 `IOException`：`emitter.send()` 抛的是受检异常，而你要在 lambda / `forEach` 里中断整条流 —— 受检异常穿不过去，只能包一层非受检的。
+
 ---
 
 ## 2.3 MVC 下的完整实现
@@ -146,6 +166,9 @@ public class StreamChatController {
 @Component
 public class AiStreamClient {
 
+    /** 只用来给线程起名，方便 jstack 里一眼认出是哪类线程 */
+    private static final AtomicInteger SEQ = new AtomicInteger();
+
     /**
      * 专门跑流式调用的线程池。
      * 不要用默认的 ForkJoinPool.commonPool —— 它会被其他并行流任务干扰，
@@ -155,7 +178,11 @@ public class AiStreamClient {
             8, 32,
             60L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(64),
-            new ThreadFactoryBuilder().setNameFormat("ai-stream-%d").build(),
+            r -> {
+                Thread t = new Thread(r, "ai-stream-" + SEQ.incrementAndGet());
+                t.setDaemon(true);          // 别拖住 JVM 关闭
+                return t;
+            },
             new ThreadPoolExecutor.CallerRunsPolicy()
     );
 
@@ -174,7 +201,11 @@ public class AiStreamClient {
 }
 ```
 
-**线程池参数怎么定**：起步可以按「并发上限 = 池大小 + 队列容量」估算。上面这组参数的容量是 32 + 64 = 96 个并发流。超过就触发 `CallerRunsPolicy`（由调用线程执行），相当于给上游一个背压信号。
+> 线程工厂用的是 lambda，没引 Guava —— 很多教程那行 `new ThreadFactoryBuilder().setNameFormat(...)` 来自 Guava，照抄会报 `cannot find symbol`，而它唯一的作用只是给线程起个名。
+
+**线程池参数怎么定**：先记住 `ThreadPoolExecutor` 的生长顺序 —— **核心线程满了先排队，队列满了才扩到最大线程数**，最大也满了才轮到拒绝策略。所以上面这组参数的真实行为是：前 72 个任务（8 条在跑 + 64 个在排队）都只有 8 条线程干活，第 73 个才开始扩到 32，第 97 个才触发 `CallerRunsPolicy`。**如果你要的是「一上来就有 32 条并发」，队列就不能开 64 —— 换成小队列（比如 8）或 `SynchronousQueue`，否则 max 那四个字基本用不上。**
+
+> `CallerRunsPolicy` 在这里有个反噬：队列满时，流式任务会**回到 Tomcat 请求线程上跑** —— 正是本节开头说要避免的那件事。它换来的是「宁可慢也不丢请求」，代价是那一刻请求线程被整整一段回答占住。想失败得更干脆就换 `AbortPolicy`，让上游拿到 503。
 
 > 第 6 章会讲怎么用限流器把并发控制在合理范围。**在那之前，先把线程池的上限设出来** —— 有一个明确的数字，比「不知道能扛多少」强得多。
 
