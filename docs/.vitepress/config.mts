@@ -7,7 +7,38 @@ export default defineConfig({
   base: '/hello-ai-backend/',
   cleanUrls: true,
   lastUpdated: true,
-  head: [['meta', { name: 'theme-color', content: '#0F6E56' }]],
+
+  // 站点地图：不配的话搜索引擎只能靠外链慢慢发现这 15 页
+  sitemap: {
+    hostname: 'https://pgy763.github.io/hello-ai-backend/'
+  },
+
+  head: [
+    ['meta', { name: 'theme-color', content: '#0F6E56' }],
+    // href 必须带 base 前缀：head 里的路径不会被 VitePress 自动改写，
+// 写成 /favicon.svg 会去域名根目录找，GitHub Pages 上是 404
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/hello-ai-backend/favicon.svg' }],
+    // 分享到微信/飞书/Twitter 时至少有个像样的预览，而不是一条裸链接
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: 'Hello, AI Backend' }],
+    [
+      'meta',
+      {
+        property: 'og:title',
+        content: 'Hello, AI Backend · 写给 Java 后端工程师的 AI 接入手册'
+      }
+    ],
+    [
+      'meta',
+      {
+        property: 'og:description',
+        content:
+          '从「能调通 API」到「能上生产」的那一段：虚拟密钥、降级链、熔断限流、任务状态机、token 计量。'
+      }
+    ],
+    ['meta', { property: 'og:url', content: 'https://pgy763.github.io/hello-ai-backend/' }],
+    ['meta', { name: 'twitter:card', content: 'summary' }]
+  ],
 
   themeConfig: {
     nav: [
@@ -65,6 +96,11 @@ export default defineConfig({
     search: { provider: 'local' },
     outline: { level: [2, 3], label: '本页目录' },
     docFooter: { prev: '上一章', next: '下一章' },
+    // 开源书的标配：读到错字的人能直接点过去改，改动成本最低
+    editLink: {
+      pattern: 'https://github.com/pgy763/hello-ai-backend/edit/main/docs/:path',
+      text: '在 GitHub 上编辑此页'
+    },
     darkModeSwitchLabel: '主题',
     sidebarMenuLabel: '目录',
     returnToTopLabel: '回到顶部',
