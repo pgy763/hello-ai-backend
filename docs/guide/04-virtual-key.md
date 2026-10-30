@@ -5,7 +5,7 @@ title: 第 4 章 · 虚拟密钥：多租户、额度与审计
 # 第 4 章 · 虚拟密钥：多租户、额度与审计
 
 ::: info 本章状态：撰写中
-已放出 **4.1–4.5** 五节，剩下的 4.6 审计字段 / 4.7 结论还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
+已放出 **4.1–4.6** 六节，只剩 4.7 结论还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
 :::
 
 ## 这一章解决什么问题
@@ -400,9 +400,90 @@ select total_tokens, reserved, settled, total_tokens - reserved - settled as ava
 
 有个反例值得单独说：**别拿 `synchronized` 或者 `ReentrantLock` 顶这一节。** 单机上它确实能挡住，测起来一切正常；等哪天加到两个实例（或者运维开了双副本），它悄无声息地失效，而且没有任何告警 —— 因为你从来没写过「我以为这把锁是全局的」这句话。这类锁的时间炸弹在扩容那天才炸。
 
+## 4.6 审计日志最小字段集
+
+4.2 说日志要给单独的写入路径，这一节说往里写什么。
+
+先把判据定清楚，不然会一路加字段加到表宽两屏、真出事时还是查不出来：**日志的用处只有两个 —— 出事后把一次调用还原出来，月底把账对上。** 符合这两件事的字段必须有，其余都算「留着占地方」。
+
+### 一条日志对应一次上游调用，不是一次用户请求
+
+这是最容易写错的一处，而且错了不会报错，只会在对账那天暴露。
+
+用户点一次「生成」，中间可能 429 重试了一次、超时降级到了另一家厂商。**厂商那边记了三笔账，你的日志只落了一行。** 月底差出来的那几个点，通常就是这条被吞掉的调用。
+
+所以主键是「上游调用」，不是「用户请求」。两者靠一个 `parent_request_id` 关联：
+
+```sql
+CREATE TABLE llm_call_log (
+  id                BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  request_id        CHAR(32)        NOT NULL COMMENT '一次上游调用',
+  parent_request_id CHAR(32)        NULL COMMENT '一次用户请求，重试/降级时多条日志共用',
+  key_id            BIGINT UNSIGNED NOT NULL,
+  key_prefix        VARCHAR(16)     NOT NULL,
+  tenant            VARCHAR(64)     NOT NULL,
+  provider          VARCHAR(32)     NOT NULL,
+  model_requested   VARCHAR(64)     NOT NULL,
+  model_returned    VARCHAR(64)     NULL,
+  is_stream         TINYINT(1)      NOT NULL DEFAULT 0,
+  retry_no          TINYINT         NOT NULL DEFAULT 0,
+  prompt_tokens     INT             NULL,
+  cached_tokens     INT             NULL,
+  completion_tokens INT             NULL,
+  finish_reason     VARCHAR(24)     NULL,
+  status            VARCHAR(16)     NOT NULL COMMENT 'OK/REJECTED/UPSTREAM_ERROR/CLIENT_ABORTED',
+  http_status       SMALLINT        NULL,
+  error_code        VARCHAR(64)     NULL,
+  queue_ms          INT             NULL COMMENT '网关内排队',
+  ttfb_ms           INT             NULL COMMENT '到首字节，流式才有意义',
+  total_ms          INT             NULL,
+  started_at        DATETIME(3)     NOT NULL COMMENT '存 UTC，不存本地时间',
+  UNIQUE KEY uk_request (request_id),
+  KEY idx_tenant_time (tenant, started_at),
+  KEY idx_parent (parent_request_id)
+);
+```
+
+### 少了哪一列，会卡住哪种账
+
+字段本身没什么好讲的，讲它们各自挡住什么才有用：
+
+| 字段 | 少了它，卡在哪 |
+| --- | --- |
+| `parent_request_id` + `retry_no` | 日志条数比厂商账单少，差多少说不清：你不知道是漏记还是重试没记 |
+| `model_returned` | 传的是别名（如 `xxx-latest`），厂商解析成了别的快照。调价或换默认版本后，你算的钱和账单对不上，且查不出为什么 |
+| `cached_tokens` 单列 | 只记 `prompt_tokens` 会把缓存命中的输入按全价算，算出来永远比账单贵一截 |
+| `queue_ms` / `ttfb_ms` | P95 变高时看不出是上游慢了还是你自己的线程池排队 —— 只有 `total_ms` 时这两个原因长得一模一样 |
+| `status` + `error_code` | 失败的行没落，QPS 和成功率全被算高；`402` 和上游 `429` 混成一种，分不清是额度问题还是厂商问题 |
+| `finish_reason` | `length` 意味着输出被截断、业务方大概率会重问一次，这次的 token 是纯损耗，复盘时找不到 |
+| `key_prefix` | 只有 `key_id`，翻日志还得回表 join；出事时最缺的就是时间 |
+
+三个容易记错的地方：
+
+**一、失败也要落行，`status` 至少分四类。** 尤其是 `CLIENT_ABORTED`：用户关掉页面、SSE 连接断了，你的代码 catch 到异常就返回了，但**上游已经把 token 生成完、照常计费**。这一类不单独统计，账永远差。
+
+**二、记 token，不记钱。** 厂商调价后，历史日志里的金额就成了错的。金额在查询时按当期价目表算。真要存，就多存一个 `price_version` 字段指向当时用的价目表 —— 只存金额不存版本，等于把一笔查不清的历史账钉在库里。
+
+**三、时间存 UTC。** 服务器时区、容器时区、数据库时区三者随时会不一致，`datetime` 带本地时间的那种「差 8 小时」排查过的人都懂。
+
+### 别存 prompt 正文
+
+想存正文的冲动很强 —— 出问题时能直接看到用户问了什么。三条代价，按顺序考虑：
+
+1. **合规。** 正文里什么都有：手机号、身份证、内部文档。存进来就得考虑加密、访问审计、导出限制。
+2. **体积。** 一条请求几 KB，日十万请求就是几百 MB，而且索引会跟着膨胀。
+3. **删不掉。** 用户要求删除某条数据时，你得在一张几十亿行的表里找出来。
+
+正确的做法是留一个外链：日志里存 `trace_id`，正文放支持保留期和访问控制的地方（Langfuse / Loki / 对象存储都行）。日志表只负责「这次调用是谁的、花了多少、成没成」。
+
+### 什么情况下这些字段都嫌多
+
+- **内部工具、不对外计费。** 五个字段够：`request_id`、`tenant`、`prompt_tokens`、`completion_tokens`、`status`。老板要的是「这周花了多少」，不是「每次调用是谁的」。
+- **已经在用 trace 平台。** 别再自建一套字段名。把 `request_id` 当外部 ID 回填进去，明细留在平台 —— 两边各维护一套最典型的后果是字段名不一致，对账时用 `requestId` 去 join `trace_id`，然后发现一半对不上。
+- **单团队、单 key。** 直接看厂商控制台的用量页。那张表比你自己做的准，还不用维护。
+
 ## 后续小节（提纲）
 
-- **4.6 审计日志最小字段集** —— 少了任何一个，月底对账都会卡住
 - **4.7 结论** —— 什么规模的团队可以先用一张表凑合
 
 ## 前置
