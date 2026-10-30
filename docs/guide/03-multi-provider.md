@@ -169,13 +169,19 @@ llm:
       api-key: ${DEEPSEEK_API_KEY}
       model: deepseek-chat
       supports-stream-options: false
+      min-temperature: 0          # 3.5 第一组：范围被收窄的那家写在这里
+      max-temperature: 2
+      system-as-user-prefix: false # 3.5 第二组：系统指令要并进第一条 user
     qwen:
       base-url: https://dashscope.aliyuncs.com/compatible-mode
       api-key: ${DASHSCOPE_API_KEY}
       model: qwen-plus
       supports-stream-options: true
+      min-temperature: 0
+      max-temperature: 1
+      system-as-user-prefix: false
   routing:
-    default: deepseek
+    default-provider: deepseek
     by-task:
       classify: qwen     # 分类走便宜的
       extract: qwen
@@ -193,14 +199,29 @@ llm:
 @ConfigurationProperties(prefix = "llm")
 public record LlmProperties(Map<String, ProviderConfig> providers, RoutingConfig routing) {
 
-    public record ProviderConfig(String baseUrl, String model, String apiKey,
-                                 boolean supportsStreamOptions) {}
+    public record ProviderConfig(
+            String baseUrl, String model, String apiKey,
+            boolean supportsStreamOptions,
+            Double minTemperature,      // 3.5 第一组：null = 不设下限
+            Double maxTemperature,      // 3.5 第一组：null = 不设上限
+            boolean systemAsUserPrefix, // 3.5 第二组
+            List<ErrorRule> errorMapping) {  // 3.5 第四组
+
+        /** 429 可能是限流，也可能是余额不足 —— 靠 code 区分，不能只看状态码 */
+        public record ErrorRule(int httpStatus, String code, String action) {}
+    }
 
     public record RoutingConfig(String defaultProvider, Map<String, String> byTask) {}
 }
 ```
 
 Spring Boot 3 上 `record` + `@ConfigurationProperties` 走**构造器绑定**，不用写一堆 setter，一个配置类体量直接砍半。字段名和 yaml 的 kebab-case 会自动对上（`base-url` → `baseUrl`），不用加注解。用它要在主类或配置类上开 `@EnableConfigurationProperties` / `@ConfigurationPropertiesScan`。
+
+::: tip 这里的坑：`default` 是 Java 关键字
+字段只能叫 `defaultProvider`，所以 yaml 里必须写 `default-provider:`。
+写成 `default:` 不会报错 —— `@ConfigurationProperties` 默认 `ignoreUnknownFields = true`，
+它静默丢弃这个键，路由到"没有配置供应商"的任务时才会 NPE，排查起来像是偶发。
+:::
 
 ### 注册表交给 Spring，别自己 new 一个 Map
 
@@ -220,18 +241,37 @@ class QwenProvider implements LlmProvider { /* ... */ }
 @Service
 public class ModelRouter {
     private final Map<String, LlmProvider> providers;   // Bean 名 → 实现
+    private final LlmProperties props;
 
-    public ModelRouter(Map<String, LlmProvider> providers) {
+    public ModelRouter(Map<String, LlmProvider> providers, LlmProperties props) {
         this.providers = providers;
+        this.props = props;
+
+        // 启动期就对一遍账：yaml 里写了、却没对应的 @Component，这里立刻炸
+        for (String name : props.routing().byTask().values()) {
+            requireProvider(name);
+        }
+        requireProvider(props.routing().defaultProvider());
     }
 
     public ChatResponse chat(String task, ChatRequest req) {
         String name = props.routing().byTask()
                 .getOrDefault(task, props.routing().defaultProvider());
-        return providers.get(name).chat(req);
+        return requireProvider(name).chat(req);
+    }
+
+    private LlmProvider requireProvider(String name) {
+        LlmProvider p = providers.get(name);
+        if (p == null) {
+            throw new IllegalStateException(
+                    "未注册的 provider: " + name + "，已有: " + providers.keySet());
+        }
+        return p;
     }
 }
 ```
+
+注意 `requireProvider` 那圈循环：**配置和 Bean 对不上，要在启动时炸，不是在第一次业务请求时炸。** 否则你改 yaml 少写一个 `@Component`，线上表现是「只有分类任务挂、其他都正常」，看起来像偶发。
 
 这一步是配置化的关键：**注册表不是你维护的 `HashMap`，是 Spring 容器。** 接一家厂商 = 写一个 `@Component` + 加一段 yaml，`ModelRouter` 一行都不用改。
 
@@ -272,8 +312,12 @@ router.chat("classify", req);   // ✅ 我要做分类
 
 ```java
 // ❌ 散在业务里：if (vendor.equals("qwen")) temp = Math.min(temp, 1.0);
-// ✅ 进适配器：拿能力表里的范围兜住
-double temp = clamp(req.temperature(), cap.minTemperature(), cap.maxTemperature());
+// ✅ 进适配器：范围来自这份适配器拿到的 cfg（即 3.4 的 ProviderConfig）
+private double normalizeTemperature(double want) {
+    double lo = cfg.minTemperature() == null ? 0d : cfg.minTemperature();
+    double hi = cfg.maxTemperature() == null ? 2d : cfg.maxTemperature();
+    return Math.max(lo, Math.min(hi, want));
+}
 ```
 
 **用 `clamp` 而不是直接取 `min`** —— 下限也要管：有的实现不接受 `0`，最小要 `0.01`。具体数字去官方文档抄，别猜。
@@ -313,10 +357,18 @@ llm:
   providers:
     some-vendor:
       error-mapping:
-        "429:insufficient_quota": billing   # 告警，不重试
-        "429:rate_limit_exceeded": retry     # 退避重试
-        "400:content_filter": reject         # 直接拒绝用户，别重试
+        - http-status: 429
+          code: insufficient_quota
+          action: billing        # 告警，不重试
+        - http-status: 429
+          code: rate_limit_exceeded
+          action: retry          # 退避重试
+        - http-status: 400
+          code: content_filter
+          action: reject         # 直接拒绝用户，别重试
 ```
+
+写成列表而不是 `"429:insufficient_quota": billing` 这种 Map：**同一个状态码要挂多个 code**，Map 得靠拼字符串当键（还牵涉 YAML 里带 `:` 的键要加引号），拼错一个字符就是一条静默失效的规则。列表结构对应 `ProviderConfig.ErrorRule`，绑不上会在启动时报错。
 
 还有一个只有走中转/聚合网关才会遇到的：**HTTP 200，但响应体里是错误。** `{"error": {...}}` 套在 200 里返回，你的 HTTP 客户端不抛异常，直接当正常响应解析，然后在 `choices` 取值时 NPE。**只要链路里有网关，解析前就必须先判 `error` 字段是否存在。**
 

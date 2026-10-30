@@ -3,6 +3,10 @@ name: Deploy docs to GitHub Pages
 on:
   push:
     branches: [main]
+  # PR 也要构建：交叉引用写错、frontmatter 坏了，VitePress 会在构建期报死链，
+  # 但不能等到合并进 main 才发现 —— 那时站点已经挂了
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -49,6 +53,8 @@ jobs:
 
   deploy:
     needs: build
+    # PR 只验证能不能构建，不往 Pages 上推
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

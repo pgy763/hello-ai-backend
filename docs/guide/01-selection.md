@@ -133,13 +133,36 @@ spring:
 依赖：
 
 ```xml
-<dependency>
-    <groupId>org.springframework.ai</groupId>
-    <artifactId>spring-ai-starter-model-openai</artifactId>
-    <version>${spring-ai.version}</version>
-</dependency>
+<!-- 1. 版本只在 properties 里定义一处 -->
+<properties>
+    <spring-ai.version>1.x.y</spring-ai.version><!-- 去 Maven Central 查最新稳定版填这里 -->
+</properties>
+
+<!-- 2. 用 BOM 统一管版本，下面的 starter 一个都不写 version -->
+<dependencyManagement>
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-bom</artifactId>
+            <version>${spring-ai.version}</version>
+            <type>pom</type>
+            <scope>import</scope>
+        </dependency>
+    </dependencies>
+</dependencyManagement>
+
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.ai</groupId>
+        <artifactId>spring-ai-starter-model-openai</artifactId>
+    </dependency>
+</dependencies>
 ```
 
+> 注意第一段不是凑数的：`${spring-ai.version}` 这种写法只有在 `<properties>` 里定义过才成立。
+> 只抄一行 dependency 会直接构建失败 —— `must be a valid version but is '${spring-ai.version}'`。
+> BOM 的作用是让所有 starter 共享同一个版本号，以后加 `spring-ai-starter-model-deepseek` 之类不用再抄一次版本。
+>
 > 版本号请查 Maven Central 上的最新稳定版。Spring AI 迭代较快，**不要用动态版本号**，锁死并定期手动升级。
 >
 > 另外，1.x 把这批 starter 改过名（早期版本是 `spring-ai-openai-spring-boot-starter` 这种写法）。照着两年前的教程抄 pom，第一件事通常是「找不到依赖」—— 先确认你看的那份资料写的是哪条版本线。
