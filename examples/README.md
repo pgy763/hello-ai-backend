@@ -25,7 +25,7 @@ cp application.example.yml application-local.yml
 | 目录 | 对应章节 | 状态 |
 | --- | --- | --- |
 | `01-selection/` | 第 1 章 · 三种方案的最小实现对比 | 📝 |
-| `02-first-request/` | 第 2 章 · SSE 流式输出 | 📝 |
+| [`02-first-request/`](./02-first-request/) | 第 2 章 · SSE 流式输出 | ✅ 可跑 |
 | `03-multi-provider/` | 第 3 章 · Provider 抽象 | 📝 |
 | `04-virtual-key/` | 第 4 章 · 虚拟密钥与额度 | 📝 |
 | `05-fallback/` | 第 5 章 · 降级链 | 📝 |
@@ -33,7 +33,7 @@ cp application.example.yml application-local.yml
 | `07-state-machine/` | 第 7 章 · 任务状态机 | 📝 |
 | `08-observability/` | 第 8 章 · 计量与成本 | 📝 |
 
-> **当前状态：只有这份约定文档，示例代码还没开始补。**
+> **当前状态：只有 `02-first-request/` 是真能跑的**（`mvn spring-boot:run` 起来就有个网页能对话），其余目录还没开始补。
 > 第 1、2 章的正文代码是完整的，可以复制到自己的项目里直接跑；这个目录要放的是「每个机制一个独立可运行模块」的那一版。
 
 第 9 章往后**不打算单独建示例模块** —— RAG 那两章的代码要跑起来得先起一个向量库，塞进「最小 Maven 模块」反而跑不通；第 11–14 章是压测、复盘、面试和毕设，本来就没有独立示例。这部分以 [`reference/`](../reference/) 和正文代码为准。

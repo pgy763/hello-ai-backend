@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>第 2 章示例 · SSE 流式对话</title>
+    <style>
+      :root {
+        --bg: #0f1720;
+        --panel: #17222e;
+        --line: #24384a;
+        --text: #e6edf3;
+        --muted: #8ba3b8;
+        --accent: #34d399;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          15px/1.7 ui-sans-serif,
+          system-ui,
+          'PingFang SC',
+          'Microsoft YaHei',
+          sans-serif;
+        display: grid;
+        place-items: start center;
+        padding: 48px 20px;
+      }
+      main {
+        width: min(760px, 100%);
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 6px;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 22px;
+      }
+      form {
+        display: flex;
+        gap: 10px;
+      }
+      input[type='text'] {
+        flex: 1;
+        min-width: 0;
+        padding: 11px 14px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+        outline: none;
+      }
+      input[type='text']:focus {
+        border-color: var(--accent);
+      }
+      button {
+        padding: 11px 18px;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        font: inherit;
+        cursor: pointer;
+        transition: 0.16s;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button[type='submit'] {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #05271c;
+        font-weight: 600;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .stats {
+        margin: 14px 0 0;
+        font:
+          12px/1.6 ui-monospace,
+          Consolas,
+          monospace;
+        color: var(--muted);
+        min-height: 20px;
+      }
+      .stats b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      pre {
+        margin: 12px 0 0;
+        padding: 18px;
+        min-height: 220px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        white-space: pre-wrap;
+        word-break: break-word;
+        font:
+          14px/1.8 ui-sans-serif,
+          system-ui,
+          'PingFang SC',
+          sans-serif;
+      }
+      pre.err {
+        border-color: #b91c1c;
+        color: #fca5a5;
+      }
+      .caret::after {
+        content: '▌';
+        color: var(--accent);
+        animation: blink 1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <main>
+      <h1>SSE 流式对话</h1>
+      <p class="hint">
+        问一句，看字一个个蹦出来。中途点「停止」，后端会在下一次写客户端失败时立刻中止上游调用 ——
+        也就是从这一刻起不再为这次回答付费。
+      </p>
+
+      <form id="form">
+        <input id="q" type="text" value="用三句话介绍什么是 SSE" autocomplete="off" />
+        <button id="send" type="submit">发送</button>
+        <button id="stop" type="button" disabled>停止</button>
+      </form>
+
+      <div id="stats" class="stats"></div>
+      <pre id="out"></pre>
+    </main>
+
+    <script>
+      const form = document.getElementById('form')
+      const input = document.getElementById('q')
+      const sendBtn = document.getElementById('send')
+      const stopBtn = document.getElementById('stop')
+      const stats = document.getElementById('stats')
+      const out = document.getElementById('out')
+
+      let controller = null
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault()
+        const q = input.value.trim()
+        if (!q) return
+
+        controller = new AbortController()
+        sendBtn.disabled = true
+        stopBtn.disabled = false
+        out.textContent = ''
+        out.classList.remove('err', 'caret')
+        out.classList.add('caret')
+        stats.textContent = '等待首字…'
+
+        const t0 = performance.now()
+        let ttft = 0
+        let chars = 0
+
+        try {
+          const resp = await fetch(`/api/chat/stream?q=${encodeURIComponent(q)}`, {
+            headers: { Accept: 'text/event-stream' },
+            signal: controller.signal
+          })
+          if (!resp.ok || !resp.body) {
+            throw new Error(`HTTP ${resp.status} ${resp.statusText}`)
+          }
+
+          const reader = resp.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+
+            // SSE 以空行分隔事件；最后一段可能不完整，留到下一轮再拼
+            const blocks = buffer.split('\n\n')
+            buffer = blocks.pop()
+
+            for (const block of blocks) {
+              const text = readData(block)
+              if (!text) continue
+              if (!ttft) {
+                ttft = Math.round(performance.now() - t0)
+                out.classList.remove('caret')
+                stats.innerHTML = `首字 <b>${ttft} ms</b>`
+              }
+              chars += text.length
+              out.textContent += text
+              out.classList.add('caret')
+            }
+          }
+
+          out.classList.remove('caret')
+          const total = Math.round(performance.now() - t0)
+          stats.innerHTML = `首字 <b>${ttft || '—'} ms</b> · 总共 <b>${total} ms</b> · ${chars} 字`
+        } catch (err) {
+          out.classList.remove('caret')
+          if (err.name === 'AbortError') {
+            stats.innerHTML = `已停止 · 收到 ${chars} 字`
+          } else {
+            out.classList.add('err')
+            out.textContent = String(err.message || err)
+            stats.textContent = ''
+          }
+        } finally {
+          sendBtn.disabled = false
+          stopBtn.disabled = true
+          controller = null
+        }
+      })
+
+      stopBtn.addEventListener('click', () => {
+        // 断开连接 → 后端 send() 抛 IOException → 抛 StreamAbortedException → 上游停止
+        controller?.abort()
+      })
+
+      /** 一个 SSE 事件里可能有多行 data（内容含换行时），要拼回去 */
+      function readData(block) {
+        const parts = []
+        for (const line of block.split('\n')) {
+          if (!line.startsWith('data:')) continue
+          parts.push(line.slice(5).replace(/^ /, ''))
+        }
+        return parts.join('\n')
+      }
+    </script>
+  </body>
+</html>

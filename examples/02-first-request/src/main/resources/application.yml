@@ -1,0 +1,20 @@
+server:
+  port: 8080
+
+llm:
+  # OpenAI 兼容协议：换 deepseek / 通义 / 智谱 只要改这三行
+  base-url: ${LLM_BASE_URL:https://api.deepseek.com}
+  api-key: ${LLM_API_KEY:}
+  model: ${LLM_MODEL:deepseek-chat}
+
+spring:
+  application:
+    name: 02-first-request
+  # 可选：把 key 写进同目录的 application-local.yml（该文件名已在 .gitignore 中），
+  # 不想每次 export 环境变量的话用这个。文件不存在也不会启动失败。
+  config:
+    import: optional:file:application-local.yml
+
+logging:
+  level:
+    helloai.firstrequest: INFO
