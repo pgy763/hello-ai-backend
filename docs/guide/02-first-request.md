@@ -114,26 +114,45 @@ public class StreamChatController {
             public void onNext(String token) {
                 try {
                     emitter.send(SseEmitter.event().data(token));
-                } catch (IOException e) {
-                    // 客户端断了（关页面、切网络）。抛出去，让上游停止调用模型 ——
-                    // 不然你还在为一个已经离开的用户付 token 的钱
+                } catch (IOException | IllegalStateException e) {
+                    // 客户端断了（关页面、切网络），或者 emitter 已被容器标记完成。
+                    // 先安静收尾再抛：complete() 自己也可能抛，不包住的话它会顶掉
+                    // 下面这个异常，表现就是「断了，但日志里什么都没有」
+                    abortQuietly(emitter);
                     throw new StreamAbortedException(e);
                 }
             }
 
             @Override
             public void onComplete() {
-                emitter.complete();
+                abortQuietly(emitter);
             }
 
             @Override
             public void onError(Throwable t) {
+                log.warn("流式调用失败: {}", t.toString());
                 // 必须通知前端。不调用的话，前端会一直等一个永远不会来的结束标志
-                emitter.completeWithError(t);
+                try {
+                    emitter.completeWithError(t);
+                } catch (Exception ignore) {
+                    // 连接已经没了
+                }
             }
         });
 
         return emitter;
+    }
+
+    /**
+     * 收尾用。连接已经关掉时再调 complete() 会抛 IllegalStateException ——
+     * 这是预期内的，吞掉，别让它变成一个假的「故障」。
+     */
+    private static void abortQuietly(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (Exception ignore) {
+            // 连接已经没了
+        }
     }
 }
 ```
@@ -152,6 +171,12 @@ public class StreamChatController {
 
 ::: warning 3. 客户端断连要能感知，并停止上游调用
 `emitter.send()` 抛 `IOException` 是个**有用的信号**，不是噪音 —— 它意味着用户已经离开了。这时候应该立刻中止对模型的调用，否则你付的钱是给一个已经关掉页面的人的。
+
+这条我实测踩过两个坑，都写在上面的代码里了：
+
+- **断连后别用 `completeWithError()` 收尾。** 错误根本发不出去，Spring 只会记一条 `Servlet.service() threw exception` 的 ERROR 加一坨堆栈，把日志里真正的问题淹没掉。安静 `complete()` 就够了。
+- **`complete()` 自己也会抛 `IllegalStateException`**（连接已关）。如果它抛在 `catch (IOException)` 里面，会把你正要抛的 `StreamAbortedException` 顶掉 —— 现象是「上游确实停了，但日志里什么都没有」，最难查的那种。
+- **断连是靠「下一次写失败」发现的**，所以有延迟：一次只写几十字节时，内核缓冲区可能把好几块都吃下去才报错。想更快发现，得靠心跳或上游自带的超时。
 :::
 
 ### 线程池：这里最容易翻车的地方
@@ -482,6 +507,10 @@ curl -N -H "Accept: text/event-stream" \
   2. 网关 / LB 的缓冲配置
   3. 你的 `send()` 是不是被攒着一起发的（检查线程池是不是单线程串行）
   4. 上游厂商的接口是不是真流式（换 `curl` 直接打厂商接口对比）
+
+> **这一章的完整可运行版本**在 [`examples/02-first-request/`](https://github.com/pgy763/hello-ai-backend/tree/main/examples/02-first-request)：
+> 4 个类、一个网页，`mvn spring-boot:run` 起来就能对话，带「停止」按钮和首字延迟计时。
+> 上面这几条判断标准，在那个示例里都能亲手验证一遍。
 
 ---
 

@@ -1,0 +1,12 @@
+# 示例模块共用的配置模板。
+# 用法：复制到你要跑的模块目录下，改名为 application-local.yml，填上自己的 key。
+#
+#   cd examples/02-first-request
+#   cp ../application.example.yml application-local.yml
+#
+# 这个文件名在根目录 .gitignore 里，永远不会被提交。
+llm:
+  # OpenAI 兼容协议的 base-url，换厂商只改这三行
+  base-url: https://api.deepseek.com
+  api-key: sk-xxxxxxxxxxxxxxxxxxxxxxxx
+  model: deepseek-chat
