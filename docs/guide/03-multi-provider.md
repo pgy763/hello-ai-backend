@@ -223,9 +223,9 @@ Spring Boot 3 上 `record` + `@ConfigurationProperties` 走**构造器绑定**�
 它静默丢弃这个键，路由到"没有配置供应商"的任务时才会 NPE，排查起来像是偶发。
 :::
 
-### 注册表交给 Spring，别自己 new 一个 Map
+### 注册表交给容器，别自己维护一个 Map
 
-每个厂商一个实现类，交给容器管，**Bean 名就取配置里的 key**：
+先纠正一个常见写法：每家厂商写一个 `@Component`，Bean 名取配置里的 key，然后注入 `Map<String, LlmProvider>`。
 
 ```java
 @Component("deepseek")
@@ -235,53 +235,63 @@ class DeepSeekProvider implements LlmProvider { /* ... */ }
 class QwenProvider implements LlmProvider { /* ... */ }
 ```
 
-然后注入 `Map<String, LlmProvider>` —— Spring 会把所有该类型的 Bean 塞进来，**map 的 key 就是 Bean 名**：
+这个写法能跑，但它和「新接一家只改 yaml」是矛盾的 —— 你还是要写一个类。**如果两家都兼容 OpenAI 协议，它们的代码会一模一样，只是 base_url 不同。写两遍是纯粹的浪费，而且第二遍复制粘贴时最容易漏掉某个差异开关。**
+
+正确的关系是：**适配器按配置实例化，不是按厂商手写。**
 
 ```java
-@Service
-public class ModelRouter {
-    private final Map<String, LlmProvider> providers;   // Bean 名 → 实现
-    private final LlmProperties props;
+@Component
+public class ProviderRegistry {
 
-    public ModelRouter(Map<String, LlmProvider> providers, LlmProperties props) {
-        this.providers = providers;
-        this.props = props;
+    private final Map<String, LlmProvider> providers;
 
-        // 启动期就对一遍账：yaml 里写了、却没对应的 @Component，这里立刻炸
-        for (String name : props.routing().byTask().values()) {
-            requireProvider(name);
-        }
-        requireProvider(props.routing().defaultProvider());
-    }
+    public ProviderRegistry(LlmProperties props, ObjectMapper json, HttpClient http,
+                            ObjectProvider<LlmProvider> customBeans) {
+        Map<String, LlmProvider> built = new LinkedHashMap<>();
 
-    public ChatResponse chat(String task, ChatRequest req) {
-        String name = props.routing().byTask()
-                .getOrDefault(task, props.routing().defaultProvider());
-        return requireProvider(name).chat(req);
-    }
+        props.providers().forEach((name, cfg) -> {
+            LlmProvider custom = pickOverride(customBeans, name);   // 协议不兼容的厂商走这里
+            built.put(name, custom != null ? custom : new OpenAiCompatProvider(name, cfg, http, json));
+        });
 
-    private LlmProvider requireProvider(String name) {
-        LlmProvider p = providers.get(name);
-        if (p == null) {
-            throw new IllegalStateException(
-                    "未注册的 provider: " + name + "，已有: " + providers.keySet());
-        }
-        return p;
+        this.providers = Map.copyOf(built);
+        validateRouting(props);   // 配置对不上，启动期就炸
     }
 }
 ```
 
-注意 `requireProvider` 那圈循环：**配置和 Bean 对不上，要在启动时炸，不是在第一次业务请求时炸。** 否则你改 yaml 少写一个 `@Component`，线上表现是「只有分类任务挂、其他都正常」，看起来像偶发。
+于是有了两条清晰的分工：
 
-这一步是配置化的关键：**注册表不是你维护的 `HashMap`，是 Spring 容器。** 接一家厂商 = 写一个 `@Component` + 加一段 yaml，`ModelRouter` 一行都不用改。
+| 厂商情况 | 你要写的 Java | 你要写的 yaml |
+| --- | --- | --- |
+| 兼容 OpenAI 协议 | **0 行**（复用 `OpenAiCompatProvider`） | 一段（base-url / key / model / 几个能力开关） |
+| 协议不兼容（签名、请求体结构完全不同） | 一个 `LlmProvider` 实现，Bean 名 = 配置 key | 一段 |
+
+注册表在构造时把两者合起来，`ModelRouter` 完全不用关心某个 provider 是复用的还是手写的。
+
+`validateRouting` 那一步不是洁癖：**配置和实现对不上，必须在启动时炸，不能在第一次业务请求时炸。** 否则你改 yaml 少写一段，线上表现是「只有分类任务挂、其他都正常」，看起来像偶发。
+
+```java
+private void validateRouting(LlmProperties props) {
+    require(props.routing().defaultProvider(), "routing.default-provider");
+    props.routing().byTask().forEach((task, provider) -> require(provider, "routing.by-task." + task));
+}
+
+private void require(String name, String where) {
+    if (name == null || !providers.containsKey(name)) {
+        throw new IllegalStateException(
+                where + " 指向了未注册的 provider: " + name + "，已注册: " + providers.keySet());
+    }
+}
+```
 
 ### 业务层按「任务」调用，不按「模型名」调用
 
-注意上面 `chat` 的第一个参数是 `task` 而不是模型名。业务代码写：
+`ModelRouter` 的入口参数是 `task`，不是模型名。业务代码写：
 
 ```java
-router.chat("classify", req);   // ✅ 我要做分类
-// router.chat("qwen-plus", req);  // ❌ 别这么写
+router.chat("classify", req);     // ✅ 我要做分类
+// router.chat("qwen-plus", req); // ❌ 别这么写
 ```
 
 差别在换模型那天暴露：前者改 yaml，后者改所有调用点。任务名的粒度也不用太细 —— 三五个够了，每个都配一遍等于没抽象。
@@ -382,9 +392,148 @@ Agent 场景里这三条几乎必踩：
 
 > 这五组绕法有个共同点：**都落在适配器里，没有一个该进业务代码。** 这正是 3.3 那个接口存在的意义 —— 如果这些兼容处理散在 service 层，抽象就等于没做。
 
-## 3.6 结论：抽象到哪一层就该停手
+## 3.6 一个适配器，吃掉五组差异
 
-3.1 到 3.5 一直在讲「加一层」。最后得说清楚这层该有多厚 —— 加多了比不加更贵，而且贵在你半年后才发现。
+3.5 讲了五组差异。如果每组各加一个 `if`，代码会散成十来处，而且下一次接厂商你还得再找一遍这些点——总会漏掉一两处。
+
+这一节把它们收进**一个类**：`OpenAiCompatProvider`。整个第 3 章的技术内容，最后都收敛在这个类的三个方法里。
+
+### 请求侧：两个方法
+
+```java
+/** 按配置把统一请求翻译成厂商能吃的 JSON */
+Map<String, Object> buildBody(ChatRequest req, boolean stream) {
+    Map<String, Object> body = new HashMap<>();
+    body.put("model", cfg.model());
+    body.put("messages", translateMessages(req.messages()));            // 第二组
+    body.put("temperature", cfg.clampTemperature(req.temperature()));   // 第一组
+    if (req.maxTokens() != null) {
+        body.put("max_tokens", req.maxTokens());
+    }
+    if (stream) {
+        body.put("stream", true);
+        if (cfg.supportsStreamOptions()) {
+            body.put("stream_options", Map.of("include_usage", true));  // 第三组
+        }
+    }
+    return body;
+}
+
+/** 第二组：system 角色的三种态度，在这里统一 */
+private List<Map<String, String>> translateMessages(List<ChatRequest.Message> in) {
+    List<Map<String, String>> out = new ArrayList<>();
+    StringBuilder pendingSystem = new StringBuilder();
+
+    for (ChatRequest.Message m : in) {
+        if ("system".equals(m.role()) && cfg.systemAsUserPrefix()) {
+            pendingSystem.append(m.content()).append("\n\n");   // 攒着，等第一条 user
+            continue;
+        }
+        String content = pendingSystem.isEmpty()
+                ? m.content()
+                : pendingSystem + m.content();
+        pendingSystem.setLength(0);
+        out.add(Map.of("role", m.role(), "content", content));
+    }
+    return out;
+}
+```
+
+`clampTemperature` 就是个带上下限的 `Math.min/Math.max`，写在 `ProviderConfig` 里（3.4 那段 record），因为它只跟配置有关。
+
+### 错误侧：状态码 + code 一起看
+
+```java
+/** 第四组：光看 429 分不清该退避还是该告警 */
+private LlmException mapError(int status, JsonNode root, String raw) {
+    JsonNode error = root.path("error");
+    String code = error.path("code").asText(error.path("type").asText("unknown"));
+    ErrorAction action = ErrorAction.FAIL;
+
+    for (LlmProperties.ProviderConfig.ErrorRule rule : rules()) {
+        if (rule.httpStatus() == status && Objects.equals(rule.code(), code)) {
+            action = rule.action();   // RETRY / BILLING / REJECT / FAIL
+            break;
+        }
+    }
+    log.warn("上游报错 provider={} status={} code={} 原文={}", name, status, code, raw);
+    return new LlmException(name, status, code, action, raw);
+}
+```
+
+业务层只判 `e.action()`，不用知道是哪家厂商、什么错误码。**原文 `raw` 一定要带出来** —— 归一化之前先别丢。
+
+### 五组差异，各自的落点
+
+| 3.5 的分组 | 落在哪一行 | 表现形式 |
+| --- | --- | --- |
+| 一、参数范围 | `cfg.clampTemperature(...)` | yaml 里的 `min-temperature` / `max-temperature` |
+| 二、消息结构 | `translateMessages(...)` | `system-as-user-prefix: true/false` |
+| 三、响应解析 | `parse(...)` + `finishReason` 判定 | 非 `stop` 一律标 `truncated` |
+| 四、错误语义 | `mapError(...)` | yaml 里的 `error-mapping` 列表 |
+| 五、Tool Calling | `parse(...)` 里按 `JsonNode` 取值，不按 `String` 强转 | 类型不匹配也不炸 |
+
+**除了这五处，整个类里再没有第二个地方需要知道「这是哪家厂商」。** 这条边界就是 3.3 那个接口存在的全部意义 —— 如果这些处理散在 service 层，抽象等于没做。
+
+### 怎么亲眼看见差异被翻译了
+
+光看代码不算证明。这个示例里有个假上游，会把**实际收到的请求体**原样吐出来：
+
+```bash
+# 同一个业务调用，温度都传 1.5
+curl -s 'localhost:8080/api/ask?task=classify&temperature=1.5'   # → qwen
+curl -s localhost:8080/fake/last
+
+# {"temperature":1.0,
+#  "messages":[{"content":"你是一个严谨的助手，只输出结论。\n\n帮我判断这条工单的类别",
+#               "role":"user"}],
+#  "model":"qwen-plus"}
+```
+
+温度 **1.5 变成了 1.0**（`max-temperature: 1` 夹的），`system` **并进了 user**（`system-as-user-prefix: true`）。
+
+换成 `task=reason`，同一个适配器发出去的是另一副样子：
+
+```bash
+curl -s 'localhost:8080/api/ask?task=reason&temperature=1.5'
+curl -s localhost:8080/fake/last
+
+# {"temperature":1.5,
+#  "messages":[{"content":"你是一个严谨的助手，只输出结论。","role":"system"},
+#              {"content":"帮我判断这条工单的类别","role":"user"}],
+#  "model":"deepseek-chat"}
+```
+
+温度原样 **1.5**，`system` 是独立一条。
+
+**同一份 `buildBody` 代码，两段完全不同的报文。** 这就是「差异进配置」的样子。
+
+### 加第三家厂商要写多少代码
+
+如果它兼容 OpenAI 协议：**0 行 Java**。
+
+```yaml
+llm:
+  providers:
+    third:
+      base-url: https://api.example.com
+      api-key: ${THIRD_API_KEY}
+      model: third-large
+  routing:
+    by-task:
+      summarize: third
+```
+
+重启，`router.chat("summarize", req)` 直接走新厂商，业务代码不动。
+
+要写类的情况只有一种：**协议不兼容**（请求体结构完全不同、或者要用厂商自己的签名算法）。那时实现 `LlmProvider`、Bean 名等于 yaml 的 key，注册表会自动选中它（3.4 的 `pickOverride`）。
+
+> 这一章的完整可运行版本在 [`examples/03-multi-provider/`](https://github.com/pgy763/hello-ai-backend/tree/main/examples/03-multi-provider)：
+> 不需要 API key，`mvn spring-boot:run` 起来就能跑上面两条 curl，看差异翻译的全过程。
+
+## 3.7 结论：抽象到哪一层就该停手
+
+3.1 到 3.6 一直在讲「加一层」。最后得说清楚这层该有多厚 —— 加多了比不加更贵，而且贵在你半年后才发现。
 
 **先算成本。** Provider 接口 + 三个方法 + 一个注册表，大约 200 行；每接一家厂商，适配器 100–200 行（这是经验值，看厂商 API 有多不兼容）。这是一次性投入。收益要等第二个厂商才兑现：新接一家改一个 yaml、加一个类，业务代码不动；某家涨价或者降智，换配置就行。
 
