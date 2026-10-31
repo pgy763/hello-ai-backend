@@ -4,19 +4,41 @@ title: 第 4 章 · 虚拟密钥：多租户、额度与审计
 
 # 第 4 章 · 虚拟密钥：多租户、额度与审计
 
-::: info 本章状态：撰写中
-已放出 **4.1–4.6** 六节，只剩 4.7 结论还是提纲。想优先看哪一节？[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你的场景，我按热度排优先级。
-:::
-
 ## 这一章解决什么问题
 
 三条业务线要用同一个模型。你不可能把厂商的真密钥发给三个团队 —— 一旦泄漏，你连是谁泄漏的都不知道。
 
+更要命的不是安全，是**你花的钱说不清**：请求发出去了，但不知道它是谁的。
+
+## 主线：一次调用要走完四步
+
+这一章所有内容都挂在这条链上，先记住它，后面每一节都在补其中一环：
+
+```
+请求进来 ──① 验虚拟 key──→ ② 预扣额度 ──→ 调用模型 ──→ ③ 按实际用量结算
+   │                                                          │
+   └──────────────── ④ 落一条调用日志 ←──────────────────────┘
+```
+
+| 节 | 补的是哪一环 | 一句话结论 |
+| --- | --- | --- |
+| 4.1 | 为什么要这层 | 价值排序是「归属 > 可吊销 > 可限额 > 可对账」，安全是顺带的 |
+| 4.2 | 落地形态 | 三张表 + 一张可以省的表，`used` 一列不够 |
+| 4.3 | ① 验 key | 用 Filter 不用 Interceptor；身份显式传参，别放 ThreadLocal |
+| 4.4 | ② 预扣策略 | 判据不是「准不准」，是「花超了会不会变成事故」 |
+| 4.5 | ②③ 的并发 | 判断和写入必须在同一条语句里；预扣要能过期回收 |
+| 4.6 | ④ 日志 | 一条日志对应**一次上游调用**，不是一次用户请求 |
+
 ## 你会得到
 
 - 一套虚拟密钥体系：业务方拿到的 key 只在你的系统里有意义
-- 额度控制：按业务线、按天、按 token 数三条线都能卡住
+- 额度控制：预扣 + 结算 + 过期回收的**完整实现**（不是三个碎片）
 - 一份能直接拿去对账的调用审计日志
+- 一个判断标准：什么时候这套东西是过度设计
+
+## 前置
+
+[第 3 章 · 统一多模型接入](/guide/03-multi-provider)
 
 ## 4.1 真密钥、虚拟密钥、以及为什么必须有中间层
 
@@ -211,7 +233,8 @@ public interface LlmClient {
 ### 流式：在请求线程上取一次，捕获进闭包
 
 ```java
-AccessContext ctx = AccessContext.current();   // 从当前 request 的 attribute 取，不是 ThreadLocal；此刻仍在请求线程上
+// Filter 里塞进 request attribute 的那个对象，在请求线程上取出来
+AccessContext ctx = AccessContext.from(request);   // request.getAttribute(ATTR)
 
 SseEmitter emitter = new SseEmitter(300_000L);
 executor.submit(() -> {
@@ -223,7 +246,9 @@ executor.submit(() -> {
 });
 ```
 
-`RequestContextHolder` 在「Controller 返回 `Callable`」这种异步里，Spring 会帮你继承请求上下文（`Callable` 是在容器管理的线程上跑的，Spring 特意为它做了 WebAsyncManager 集成）；`SseEmitter` 跑在你自己 `submit` 的线程池上时不保证。这个「保不保证」还跟版本和具体写法有关，**不要赌，捕获一个局部变量最便宜。**
+`ctx` 本身可以从 `RequestContextHolder` 拿（`AccessContext.from(((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest())`），**但必须在请求线程上调用**。一旦进了你 `submit` 的线程池，`RequestContextHolder` 还灵不灵就取决于「Spring 有没有帮你继承上下文」：Controller 返回 `Callable` 时容器会做 `WebAsyncManager` 集成，跑在你自己线程池上的 `Runnable` 则不保证，而且这个行为随版本变。
+
+**所以不要赌：在请求线程上取一次，捕获进闭包。** 代价只是多一个局部变量。
 
 代价是长的生成任务会一直持有 `ctx` 和 `emitter` 的引用，内存里多留一会儿。它只有几个字段，无所谓；但别顺手把整个 `HttpServletRequest` 也捕获进去 —— 那会把请求体和连接一起钉在堆上，直到生成结束。
 
@@ -232,6 +257,14 @@ executor.submit(() -> {
 链路定下来后，每个请求的成本是：一次 SHA-256（微秒级）+ 一次走唯一索引的等值查询（经验值 1ms 上下）。网关 QPS 上到几百，这条查询就是第一个热点。
 
 用 Caffeine 缓存 `key_hash` → 记录，TTL 30–60 秒。**代价要说清楚：吊销的最长生效延迟等于 TTL。** 所以「吊销立即生效」和「缓存」只能选一个 —— 想都要，就在吊销接口里主动 `invalidate(keyHash)`，别去缩短 TTL（缩短了等于没缓存）。
+
+**多实例部署时这条要说两遍**：`invalidate` 只清得掉当前这台。三台机器各自缓存 60 秒，你在 A 上调了吊销，B 和 C 最多还能用一分钟。三种处理，按成本排：
+
+1. 接受它，把 TTL 压到 30 秒 —— 吊销最迟 30 秒生效，多数内部系统够了
+2. 加一个「吊销广播」（Redis pub/sub 或直接给一个 `key_version`）让各实例跟着清
+3. 高危 key 的吊销走远期方案：先改状态、再广播、最后等 TTL 自然过期
+
+**别选第四种「只清本地还声称立即生效」** —— 那是最容易写出来、也最容易在对账时被打脸的一种。
 
 ### 什么情况下这条链路是过度设计
 
@@ -263,7 +296,7 @@ executor.submit(() -> {
 
 1. 预扣 `估算输入 token + max_tokens`，写一条 `PENDING` 记录，带 `expire_at`
 2. 调用结束：转 `SETTLED`，按实际用量结算，差额归还
-3. 定时任务扫 `PENDING` 且已过期的记录，归还额度 —— 余量给 5 分钟以上，长回答真的可能跑三分钟
+3. 定时任务扫 `PENDING` 且已过期的记录，归还额度 —— **`expire_at` 至少给到 SSE 超时的两倍**（第 2 章那个 300 秒的超时，对应 10 分钟），给短了会在长回答还在生成时就回收额度
 4. 日/月这类「软额度」仍然只用后结算，省掉整套状态机
 
 选型的判据不是「精确」，是**「花超了会不会变成事故」**：
@@ -360,8 +393,12 @@ Deadlock found when trying to get lock; try restarting transaction
 
 三件事按顺序做：
 
-1. **固定顺序**，成本为零。所有碰这两张表的事务，一律先 `bucket` 后 `hold`；一次涉及多个 bucket 时按 `id` 升序。这一条能解掉绝大多数死锁。
+1. **固定顺序，而且顺序是「先单据、后额度」。** 所有碰这两张表的事务，一律先 `llm_quota_hold` 再 `llm_quota_bucket`；一次涉及多个 bucket 时按 `id` 升序。
+
+   为什么是这个方向而不是反过来：**单据表达的是意图（「这次调用要花多少」），额度是大家抢的那个资源。** 顺着业务写下来天然就是「先有单据，才知道要动多少额度」；硬扭成「先 bucket 后 hold」你得多查一次库才能拿到 bucketId。而且插入一行比更新一行锁的范围小得多，冲突更少。**两天后回来改代码的人也不会写反，因为顺序是顺着业务走的。**
+
 2. **死锁可以重试一次**。它不是业务失败，捕获那个异常重跑一遍，第二次基本都能过。注意别把 `402` 那条分支也包进重试范围 —— 那是两回事。
+
 3. **别为了躲死锁拆事务**。拆成「不在一个事务里」等于把一个确定的死锁换成一个不确定的超卖。
 
 ### 五、过期回收：两个实例会各归还一次
@@ -381,16 +418,155 @@ if (claimed == 0) return;   // 别的实例先抢到了，什么都不做
 
 MySQL 8 上还有个更省事的写法，批量取待处理行时用 `select ... for update skip locked` —— 别的实例直接跳过被别人锁住的行，不用一条条去抢。
 
+### 六、把三步写成代码：一个能直接抄的 `QuotaService`
+
+前面五节各讲了一个坑，但**碎片拼不出能跑的东西**。这一节把它们合成一个类 —— 预扣、结算、回收三个方法，每个坑都在对应位置标了注释。
+
+#### 预扣：幂等 + 一条语句定生死
+
+```java
+@Transactional
+public long reserve(long keyId, String requestId, long estimate) {
+    long bucketId = bucketId(keyId);
+
+    try {
+        jdbc.update("""
+            insert into llm_quota_hold (bucket_id, request_id, amount, status, expire_at)
+            values (?, ?, ?, 0, ?)
+            """, bucketId, requestId, estimate,
+            Timestamp.valueOf(LocalDateTime.now().plusMinutes(holdTtlMinutes)));
+    } catch (DuplicateKeyException e) {
+        // uk_request 挡住了重复预扣：客户端重放、网关重试都走这里。这是幂等，不是错误
+        return holdIdOf(requestId);
+    }
+
+    // 整章唯一一条真正的并发防线：判断和写入在同一个语句里
+    int n = jdbc.update("""
+        update llm_quota_bucket
+           set reserved = reserved + ?
+         where id = ?
+           and total_tokens - reserved - settled >= ?
+        """, estimate, bucketId, estimate);
+
+    if (n == 0) {
+        throw new QuotaExceededException(keyId);   // 事务回滚，上面那张单据一起没了
+    }
+    return holdIdOf(requestId);
+}
+```
+
+三个细节都对上了前面的结论：
+
+- **`estimate` 是按最坏情况估的**（4.4）：`prompt_tokens + max_tokens`
+- **`uk_request` 是幂等闸门**：同一个 `requestId` 第二次进来直接返回第一张单据，不会扣两次
+- **`n == 0` 抛业务异常**：整笔事务回滚，单据和额度一起撤销，不会留下孤儿单据
+
+#### 结算：先过闸门，再一次写完
+
+```java
+@Transactional
+public void settle(long holdId, long actualTokens) {
+    Hold hold = find(holdId);
+    if (hold == null) return;
+
+    // 幂等闸门：只有 PENDING(0) 能变 SETTLED(1)
+    int claimed = jdbc.update(
+        "update llm_quota_hold set status = 1 where id = ? and status = 0", holdId);
+
+    if (claimed == 0) {
+        Integer status = jdbc.queryForObject(
+            "select status from llm_quota_hold where id = ?", Integer.class, holdId);
+        if (status != null && status == 2) {
+            // 已经被过期回收：预扣额度早还回去了，但这次调用真的花了 token。
+            // 不记这一笔，账就永远差 —— 对应 4.6 里 CLIENT_ABORTED 那一类
+            jdbc.update("update llm_quota_bucket set settled = settled + ? where id = ?",
+                actualTokens, hold.bucketId());
+        }
+        return;   // status == 1：正常重放，什么都不做
+    }
+
+    // 两个字段同进同出，中间不存在能让别人看见的「额度短暂变多」
+    jdbc.update("""
+        update llm_quota_bucket
+           set reserved = reserved - ?, settled = settled + ?
+         where id = ?
+        """, hold.amount(), actualTokens, hold.bucketId());
+}
+```
+
+`claimed == 0` 那一支里藏着本章最容易漏的一笔账：**请求超时被回收了，但上游其实已经把 token 烧掉了。** 只做「已结算就返回」的写法，会让这部分用量从账上消失。
+
+#### 过期回收：靠单据状态做 CAS
+
+```java
+@Scheduled(fixedDelay = 60_000)
+public void expireOnce() {
+    List<Long> due = jdbc.queryForList("""
+        select id from llm_quota_hold
+         where status = 0 and expire_at < ?
+         order by id limit 200
+        """, Long.class, Timestamp.valueOf(LocalDateTime.now()));
+
+    for (Long holdId : due) {
+        Hold hold = find(holdId);
+        if (hold != null) expireOne(hold);   // 每条一个独立事务，任一条失败不影响其他
+    }
+}
+
+@Transactional
+public boolean expireOne(Hold hold) {
+    // and status = 0 是全部关键：行锁保证多实例里只有一个能把 0 改成 2
+    int claimed = jdbc.update(
+        "update llm_quota_hold set status = 2 where id = ? and status = 0", hold.id());
+    if (claimed == 0) return false;          // 别的实例抢到了，或者这条刚好结算了
+    jdbc.update("update llm_quota_bucket set reserved = reserved - ? where id = ?",
+        hold.amount(), hold.bucketId());
+    return true;
+}
+```
+
+注意这里**没有用分布式锁，也没有 `select ... for update` 锁一整批**：CAS 本身就是闸门，锁一批反而会把事务拖长。
+
+#### 过期时间给多久
+
+这是唯一一个拍脑袋会出错的地方：**`expire_at` 必须大于「一次调用可能持续的最长时间」。**
+
+第 2 章的 SSE 超时给的是 300 秒。如果 `expire_at` 只留 5 分钟，那一个正好跑到 4 分 59 秒的长回答，会在还在生成时就被回收掉额度 —— 结算时 `claimed == 0`，走到上面那个补偿分支。虽然不丢账，但你会白写一条告警。
+
+**给两倍：SSE 超时 300 秒 → `expire_at` 设 10 分钟。** 宁可晚回收（额度虚占一会儿），不要早回收（账变复杂）。
+
 ### 怎么证明写对了
 
-代码审查看不出这类问题，只能压。一个够用的验证：把额度设成「刚好够 25 个请求的量」，起 50 个线程同时打同一把 key，全部结束后查一次：
+代码审查看不出这类问题，只能压。示例模块把这件事做成了一个接口：
+
+```bash
+curl -s 'localhost:8080/api/selftest?parallel=50&estimate=100'
+```
+
+额度 2500、每个请求预扣 100（容量 25），50 个线程同时打：
+
+```json
+{"parallel":50,"estimatePerRequest":100,"capacity":25,
+ "succeeded":25,"rejected":25,"failed":0,
+ "reserved":2500,"available":0,"noOversell":true}
+```
+
+**25 个通过、25 个被拒、可用额度正好 0。** 这才是「写对了」的样子。
+
+再看合格 / 不合格的判据：
 
 ```sql
 select total_tokens, reserved, settled, total_tokens - reserved - settled as available
   from llm_quota_bucket where id = ?;
 ```
 
-合格的输出只有两种：`available >= 0` 且通过的请求数 ≤ 25；或者 `available < 0`（说明还有洞）。第三种情况最坑 ——**`available` 看着正常，但通过的请求数超了**，那说明有某条路径绕过了 CAS。每次改动这块代码都跑一遍，比读十遍代码有用。
+| 结果 | 说明 |
+| --- | --- |
+| `available >= 0` 且通过数 ≤ 容量 | ✅ 正常 |
+| `available < 0` | ❌ 有路径绕过了那条带 `where` 的 UPDATE |
+| `available` 正常但通过数超了 | ❌ 最坑的一种：有路径根本没走 CAS |
+
+第三种最难发现，因为它看起来「账是平的」。**每次改动这块代码都跑一遍，比读十遍代码有用。**
 
 ### 什么情况下这一节整段跳过
 
@@ -482,10 +658,59 @@ CREATE TABLE llm_call_log (
 - **已经在用 trace 平台。** 别再自建一套字段名。把 `request_id` 当外部 ID 回填进去，明细留在平台 —— 两边各维护一套最典型的后果是字段名不一致，对账时用 `requestId` 去 join `trace_id`，然后发现一半对不上。
 - **单团队、单 key。** 直接看厂商控制台的用量页。那张表比你自己做的准，还不用维护。
 
-## 后续小节（提纲）
+## 4.7 结论：从一张表开始，别从架构图开始
 
-- **4.7 结论** —— 什么规模的团队可以先用一张表凑合
+这一章给了三张表、一个 Filter、一个额度引擎、一份日志字段表。**如果你照着全建，多半会后悔** —— 因为你在还没有第二个租户的时候，就付出了永久的运维成本。
 
-## 前置
+所以最后说清楚落地顺序。
 
-[第 3 章 · 统一多模型接入](/guide/03-multi-provider)
+### 第一周：一张表 + 一个字段
+
+线上真实需要的，往往只是「知道是谁花的」：
+
+```sql
+CREATE TABLE llm_call_log (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  request_id  CHAR(32)    NOT NULL,
+  tenant      VARCHAR(64) NOT NULL,
+  prompt_tokens     INT NULL,
+  completion_tokens INT NULL,
+  status      VARCHAR(16) NOT NULL,
+  started_at  DATETIME(3) NOT NULL,
+  UNIQUE KEY uk_request (request_id)
+);
+```
+
+配合一把共享 key、一个从 header 取的 `tenant`，两百行以内能跑完。**别小看这一步：它已经解决了「账单按业务线拆」这个最原始的需求**，而这一步不做的项目，三个月后连「谁在烧钱」都答不上来。
+
+### 等到出现第二个主体：再上虚拟 key
+
+判断线在 4.1 那条：**有人要一份能对上的账，而且不止一个主体。**
+
+这时才需要 `llm_virtual_key` 表、`key_hash` 验证、`AccessContext` 一路传。这一层的价值在「出事时能只吊销一条线」和「死循环只能烧自己那份」，安全只是顺带。
+
+### 等到「花超了会变成事故」：才需要预扣
+
+这是 4.4 那张表的判据。免费额度、对客户计费、`max_tokens` 开到很大的场景 —— 预扣。
+
+**其余情况用后结算 + 低频对账。** 预扣的虚占率在短请求场景能到 90%（预扣 4000、实扣 50），十个并发的长请求就能把日额度虚占光，把并发压到接近串行。很多人是被「预扣更准」这种直觉带进去的，实际是花一倍复杂度换了一个更差的吞吐。
+
+### 什么时候这些都不要
+
+三条线，任何一条成立就别做这一章的东西：
+
+- **一个团队、一条业务线、月账单几百块。** 真 key 放环境变量，厂商控制台的用量页就是你的账单。
+- **内部工具，用户就是同事。** 没人需要对账，也没有第二个人来泄漏。
+- **厂商已经支持 key 级配额和用量明细。** 那一节的价值只剩「统一协议」，属于第 3 章的 Provider 层。
+
+### 这一章真正想说的三句话
+
+如果过几个月你只记得三件事，记这三件：
+
+1. **「请求发出去了，但不知道它是谁的」是所有成本问题的源头。** 虚拟 key 只是这句话的一个实现，你要的是那个标识能一路走到日志里。
+2. **并发问题的解法不是加锁，是「让判断和写入变成同一个原子动作」。** 一条带 `where` 的 UPDATE、一次 CAS，比 `synchronized`、比分布式锁都便宜，而且它不会在你扩容那天突然失效。
+3. **账不平的地方永远在缝里**：两条语句之间、两个事务之间、两个实例之间、以及「回收了但上游其实收过费」这种时间差里。上面那个 `QuotaService` 三个方法，每个 `if` 都在填一条缝。
+
+**下一章**换个方向：如果主力模型这会儿正好挂了 —— 不是慢，是彻底不通 —— 你的降级链该在多长时间内切过去，切过去之后又会撞上什么。
+
+→ [第 5 章 · 降级链：主备模型自动切换](/guide/05-fallback)

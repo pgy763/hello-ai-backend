@@ -1,0 +1,39 @@
+server:
+  port: 8080
+
+llm:
+  providers:
+    # 两家都指向本进程里的假上游，所以这个示例不需要真 key 就能跑。
+    # 真要用厂商：把 base-url 换成 https://api.deepseek.com 之类，api-key 换成真 key 即可。
+    deepseek:
+      base-url: http://localhost:8080/fake
+      api-key: fake-key
+      model: deepseek-chat
+      supports-stream-options: false
+      max-temperature: 2
+      system-as-user-prefix: false
+    qwen:
+      base-url: http://localhost:8080/fake
+      api-key: fake-key
+      model: qwen-plus
+      supports-stream-options: true
+      max-temperature: 1 # 第一组：范围被收窄，传 1.5 会被夹到 1.0
+      system-as-user-prefix: true # 第二组：system 并进第一条 user
+      error-mapping:
+        - http-status: 429
+          code: insufficient_quota
+          action: BILLING
+        - http-status: 429
+          code: rate_limit_exceeded
+          action: RETRY
+
+  routing:
+    default-provider: deepseek
+    by-task:
+      classify: qwen # 分类走便宜的
+      extract: qwen
+      reason: deepseek # 多步推理走强的
+
+logging:
+  level:
+    helloai.multiprovider: INFO
