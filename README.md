@@ -1,6 +1,6 @@
 # Hello, AI Backend
 
-![进度](https://img.shields.io/badge/已完稿-12%2F15-blue)
+![进度](https://img.shields.io/badge/已完稿-15%2F15-brightgreen)
 ![java](https://img.shields.io/badge/Java-17%2B-orange)
 ![spring](https://img.shields.io/badge/Spring_Boot-3.x-green)
 ![语言](https://img.shields.io/badge/语言-中文-red)
@@ -76,14 +76,14 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 | 章 | 标题 | 你会得到 | 状态 |
 | --- | --- | --- | --- |
 | 11 | [压测与容量规划](docs/guide/11-capacity.md) | 并发=QPS×耗时，饱和点实测 | ✅ |
-| 12 | [生产事故复盘集](docs/guide/12-postmortem.md) | 别人踩过的坑，你不必再踩 | 📝 |
-| 13 | [面试题：AI 后端工程师会被问到的 30 问](docs/guide/13-interview.md) | 求职直击 | 🚧 |
-| 14 | [毕业设计：给你自己的系统接上 AI](docs/guide/14-capstone.md) | 一个能写进简历的完整项目 | 📝 |
+| 12 | [生产事故复盘集](docs/guide/12-postmortem.md) | 十个带实测数字的真实事故 | ✅ |
+| 13 | [面试题：AI 后端工程师会被问到的 30 问](docs/guide/13-interview.md) | 30 题 + 自测评分 | ✅ |
+| 14 | [毕业设计：工单智能助手](docs/guide/14-capstone.md) | 七步实现 + 验收清单 | ✅ |
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 12 篇（序章 + 第 1–11 章）· 撰写中 1 章（第 13 章已放出 6 道样题）· 仅提纲 2 章。
-接下来写的是 **第 12 章 · 事故复盘集**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
+**当前进度**：**全书 15 篇已完稿**（序章 + 第 1–14 章），14 章都配了能直接跑的示例，全部不依赖 key。
+接下来会补：更多厂商的适配示例、真实项目的接入案例。有想看的场景，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说一声。
 
 > 状态按「仓库里实际有什么」标注，不按「打算写什么」标注 —— 点进去发现只有提纲，才是真的浪费时间。
 
