@@ -1,6 +1,6 @@
 # Hello, AI Backend
 
-![进度](https://img.shields.io/badge/已完稿-9%2F15-blue)
+![进度](https://img.shields.io/badge/已完稿-11%2F15-blue)
 ![java](https://img.shields.io/badge/Java-17%2B-orange)
 ![spring](https://img.shields.io/badge/Spring_Boot-3.x-green)
 ![语言](https://img.shields.io/badge/语言-中文-red)
@@ -68,8 +68,8 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 | 章 | 标题 | 你会得到 | 状态 |
 | --- | --- | --- | --- |
-| 9 | [RAG 落地：向量库选型与切分策略](docs/guide/09-rag-basics.md) | 检索命中率可调、可评估的 RAG 基础 | 📝 |
-| 10 | [把 RAG 接进 Java 服务](docs/guide/10-rag-in-java.md) | 索引流水线与增量更新 | 📝 |
+| 9 | [RAG 落地：向量库选型与切分策略](docs/guide/09-rag-basics.md) | 检索命中率可调、可评估的 RAG 基础 | ✅ |
+| 10 | [把 RAG 接进 Java 服务](docs/guide/10-rag-in-java.md) | 索引流水线与增量更新 | ✅ |
 
 ### 第四部分 · 收尾
 
@@ -82,8 +82,8 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 9 篇（序章 + 第 1–8 章）· 撰写中 1 章（第 13 章已放出 6 道样题）· 仅提纲 5 章。
-接下来写的是 **第 9 章 · RAG 落地：向量库选型与切分策略**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
+**当前进度**：已完稿 11 篇（序章 + 第 1–10 章）· 撰写中 1 章（第 13 章已放出 6 道样题）· 仅提纲 3 章。
+接下来写的是 **第 11 章 · 压测与容量规划**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
 
 > 状态按「仓库里实际有什么」标注，不按「打算写什么」标注 —— 点进去发现只有提纲，才是真的浪费时间。
 

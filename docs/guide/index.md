@@ -10,7 +10,7 @@ title: 全书目录
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 9 篇 · 撰写中 1 章 · 仅提纲 5 章。接下来写的是 **第 9 章 · RAG 落地**。
+**当前进度**：已完稿 11 篇 · 撰写中 1 章 · 仅提纲 3 章。接下来写的是 **第 11 章 · 压测与容量规划**。
 
 ---
 
@@ -44,8 +44,8 @@ title: 全书目录
 
 | | 章节 | 状态 |
 | --- | --- | --- |
-| 9 | [RAG 落地：向量库选型与切分策略](/guide/09-rag-basics) | 📝 |
-| 10 | [把 RAG 接进 Java 服务](/guide/10-rag-in-java) | 📝 |
+| 9 | [RAG 落地：向量库选型与切分策略](/guide/09-rag-basics) | ✅ |
+| 10 | [把 RAG 接进 Java 服务](/guide/10-rag-in-java) | ✅ |
 
 ## 第四部分 · 收尾
 
@@ -64,7 +64,7 @@ title: 全书目录
 
 [序章](/guide/00-intro) → [第 1 章 选型](/guide/01-selection) → [第 5 章 降级](/guide/05-fallback) → [第 8 章 计量](/guide/08-observability)
 
-> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章](/guide/04-virtual-key) → [第 5 章](/guide/05-fallback) → [第 6 章](/guide/06-ratelimit) → [第 7 章](/guide/07-state-machine) → [第 8 章](/guide/08-observability)。前八章都配了能直接跑示例，见 [examples](https://github.com/pgy763/hello-ai-backend/tree/main/examples)。第 9、10 章现在只有提纲，各章状态以上面的目录为准。
+> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章](/guide/04-virtual-key) → [第 5 章](/guide/05-fallback) → [第 6 章](/guide/06-ratelimit) → [第 7 章](/guide/07-state-machine) → [第 8 章](/guide/08-observability) → [第 9 章](/guide/09-rag-basics) → [第 10 章](/guide/10-rag-in-java)。前十章都配了能直接跑示例，见 [examples](https://github.com/pgy763/hello-ai-backend/tree/main/examples)。第 11 章往后现在只有提纲，各章状态以上面的目录为准。
 
 ## 已经在做 AI 项目？
 
