@@ -42,3 +42,4 @@ secrets/
 # 日志
 logs/
 *.log
+examples/*/data/
