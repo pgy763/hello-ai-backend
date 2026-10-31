@@ -1,0 +1,31 @@
+spring:
+  application:
+    name: 08-observability
+  datasource:
+    url: jdbc:h2:mem:obsdb;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ''
+  sql:
+    init:
+      mode: always
+
+server:
+  port: 8080
+
+# 示例单价（元 / 百万 token），不是任何厂商的真实报价，换成你自己合同里的数字
+pricing:
+  models:
+    demo-large:
+      in-per-m: 2.0
+      out-per-m: 8.0
+      # 命中缓存的输入 token，通常便宜很多
+      cached-in-per-m: 0.5
+    demo-small:
+      in-per-m: 0.5
+      out-per-m: 1.5
+      cached-in-per-m: 0.1
+
+logging:
+  level:
+    helloai.obs: INFO
