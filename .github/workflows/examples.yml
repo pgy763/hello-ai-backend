@@ -30,6 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         module:
+          - 01-selection
           - 02-first-request
           - 03-multi-provider
           - 04-virtual-key
@@ -58,4 +59,13 @@ jobs:
       # 能挡住「代码能编译但打不出可执行 jar」这类问题。
       - name: Compile and package
         working-directory: examples/${{ matrix.module }}
-        run: mvn -B -ntp -DskipTests package
+        run: |
+          # 第一次就带 -U：忽略缓存里的"下载失败"标记。
+          # setup-java 的 Maven 缓存会把 .lastUpdated 失败标记一起缓存下来，
+          # 表现是 `spring-boot-dependencies:pom:3.4.0 (absent)` —— 明明在 Central 上有。
+          if mvn -B -ntp -U -DskipTests -Dmaven.wagon.http.retryHandler.count=3 package; then
+            exit 0
+          fi
+          echo "::warning::首次构建失败，清掉缓存后重试一次"
+          rm -rf ~/.m2/repository/org/springframework/boot
+          mvn -B -ntp -U -DskipTests package
