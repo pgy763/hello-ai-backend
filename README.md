@@ -91,11 +91,12 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 ## 配套项目
 
-本书的完整参考实现是一个**独立可跑的项目**，正文只讲其中最关键的 50–100 行。
+两处配套，各管一件事：
 
-> `reference/` 目录 —— 一个带虚拟密钥、降级链、熔断、令牌桶、状态机编排的 AI 接入层。规划中，第 8 章结束后放出。
+- **[`examples/`](examples/)** —— 12 个能跑的模块，一个章节一个，拼起来就是一个完整的接入层。[`14-capstone`](examples/14-capstone/) 是集成版，端到端可跑，还带故障注入
+- **[`reference/`](reference/)** —— 速查表：[错误码对照](reference/error-codes.md)、[参数速查](reference/params.md)、[成本速算](reference/cost.md)、[环境变量](reference/env.md)。写代码时不用翻正文
 
-如果你现在就想看一个能跑的版本，可以先看作者另一个仓库 [llm-gateway](https://github.com/pgy763/llm-gateway) —— 它是这本书参考实现的前身，同样是 Spring Boot 写的。
+如果你想要更长的一版接入层（虚拟密钥、熔断、Redis 令牌桶、状态机编排全都有），可以看作者另一个仓库 [llm-gateway](https://github.com/pgy763/llm-gateway)。
 
 ## 怎么读
 
