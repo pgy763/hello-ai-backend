@@ -1,6 +1,6 @@
 # Hello, AI Backend
 
-![进度](https://img.shields.io/badge/已完稿-7%2F15-blue)
+![进度](https://img.shields.io/badge/已完稿-9%2F15-blue)
 ![java](https://img.shields.io/badge/Java-17%2B-orange)
 ![spring](https://img.shields.io/badge/Spring_Boot-3.x-green)
 ![语言](https://img.shields.io/badge/语言-中文-red)
@@ -61,8 +61,8 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 | 4 | [虚拟密钥：多租户、额度与审计](docs/guide/04-virtual-key.md) | 一套能让多条业务线共存的密钥体系 | ✅ |
 | 5 | [降级链：主备模型自动切换](docs/guide/05-fallback.md) | 上游挂了业务不挂的健康探测与切换 | ✅ |
 | 6 | [熔断与限流：Redis + Lua 令牌桶](docs/guide/06-ratelimit.md) | 抗住突发流量、守住套餐 RPM 上限 | ✅ |
-| 7 | [多步任务编排：状态机与断点续跑](docs/guide/07-state-machine.md) | 长任务可恢复、可观测、可重放 | 📝 |
-| 8 | [可观测性：token 计量与成本核算](docs/guide/08-observability.md) | 能按业务线报账的调用日志 | 📝 |
+| 7 | [多步任务编排：状态机与断点续跑](docs/guide/07-state-machine.md) | 长任务可恢复、可观测、可重放 | ✅ |
+| 8 | [可观测性：token 计量与成本核算](docs/guide/08-observability.md) | 能按业务线报账的调用日志 | ✅ |
 
 ### 第三部分 · 让 AI 读懂你的数据
 
@@ -82,8 +82,8 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 7 篇（序章 + 第 1–6 章）· 撰写中 1 章（第 13 章已放出 6 道样题）· 仅提纲 7 章。
-接下来写的是 **第 7 章 · 多步任务编排：状态机与断点续跑**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
+**当前进度**：已完稿 9 篇（序章 + 第 1–8 章）· 撰写中 1 章（第 13 章已放出 6 道样题）· 仅提纲 5 章。
+接下来写的是 **第 9 章 · RAG 落地：向量库选型与切分策略**；想插队的话，[开个 Issue](https://github.com/pgy763/hello-ai-backend/issues) 说清你卡在哪一步。
 
 > 状态按「仓库里实际有什么」标注，不按「打算写什么」标注 —— 点进去发现只有提纲，才是真的浪费时间。
 
