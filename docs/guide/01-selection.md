@@ -379,9 +379,24 @@ public interface AiClient {
 
 ## 本章代码
 
-`examples/01-selection/` **还没建**。计划是放上面三段代码的完整可运行版本 —— 三个独立的 Maven 模块，共用同一份 `application.yml` 模板。
+`examples/01-selection/` —— 一个模块，三种写法并排放。不联网、不要 key，因为它把"上游"做成了进程内的假实现，所以三种写法之间的差异**只来自代码形状**，不来自模型。
 
-现在想跑，直接复制本章的代码块到自己项目里就行：裸 HTTP 版本只需要一个 `spring-boot-starter-web`。
+```bash
+cd examples/01-selection && mvn spring-boot:run
+curl -s localhost:8080/api/compare | jq
+```
+
+它实测出来的三行结论（`/api/compare` 的真实输出）：
+
+| 写法 | 有效行数 | 拿得到 token | 上游 503 时 |
+| --- | --- | --- | --- |
+| 裸 HTTP | 16 | ❌ | ❌ 抛异常 |
+| 接口 + 降级 | 26 | ✅ | ✅ 降级后仍出结果 |
+| 托管网关 | 10 | ❌ | ❌ 抛异常 |
+
+**三种写法的耗时几乎一样（60–69ms）** —— 抽象不带来延迟。差异全在"故障时能不能活"和"拿不拿得到计量信息"这两件事上。
+
+> `mvn spring-boot:run` 只是方便；`java -jar target/*.jar` 从模块目录启动也可以，`/api/loc` 会数真实行数。
 
 > Spring AI 与 LangChain4j 的依赖坐标，以官方 Maven Central 上的最新稳定版为准 —— 这两个项目迭代都快，别照抄任何文章里的版本号。
 

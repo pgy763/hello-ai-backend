@@ -25,6 +25,7 @@ cp application.example.yml application-local.yml
 | 目录 | 对应章节 | 状态 |
 | --- | --- | --- |
 | `01-selection/` | 第 1 章 · 三种方案的最小实现对比 | 📝 |
+| [`01-selection/`](./01-selection/) | 第 1 章 · 同一个需求，三种写法 | ✅ 可跑（假上游，对照实验） |
 | [`02-first-request/`](./02-first-request/) | 第 2 章 · SSE 流式输出 | ✅ 可跑 |
 | [`03-multi-provider/`](./03-multi-provider/) | 第 3 章 · Provider 抽象 | ✅ 可跑（无需 key） |
 | [`04-virtual-key/`](./04-virtual-key/) | 第 4 章 · 虚拟密钥与额度 | ✅ 可跑（H2 + 并发自检） |
@@ -37,7 +38,7 @@ cp application.example.yml application-local.yml
 | [`11-capacity/`](./11-capacity/) | 第 11 章 · 压测与容量估算 | ✅ 可跑（假上游，零成本压测） |
 | [`14-capstone/`](./14-capstone/) | 第 14 章 · 毕业设计：工单智能助手 | ✅ 可跑（端到端，含故障注入） |
 
-> **当前状态：第 2–11 章和第 14 章的模块都能直接跑。**
+> **当前状态：第 1、2–11、14 章的 12 个模块都能直接跑。CI 会编译全部模块。**
 > - `02-first-request/` 需要一把真 key（或任何 OpenAI 兼容服务），打开网页就能对话
 > - `03-multi-provider/` 自带假上游，**不需要 key、不需要外网**，能看见差异翻译的全过程
 > - `04-virtual-key/` 用 H2 内存库替代 MySQL，自带 50 线程并发自检，能压出「不超卖」的结果
