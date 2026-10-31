@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    # MODE=MySQL 让 H2 认 MySQL 那套语法；换真库只改 url/driver/用户名密码
+    url: jdbc:h2:mem:quota;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ''
+  sql:
+    init:
+      mode: always
+
+server:
+  port: 8080
+
+quota:
+  daily-tokens: 2500 # 够 25 个 estimate=100 的请求，自检时用它卡线
+  hold-ttl-minutes: 10 # 必须大于 SSE 超时（示例给 5 分钟）+ 余量
+
+logging:
+  level:
+    helloai.virtualkey: INFO
