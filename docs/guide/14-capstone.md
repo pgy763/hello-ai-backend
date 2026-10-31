@@ -343,6 +343,32 @@ curl -s -X POST 'localhost:8080/api/fault?mode=all_down'
 
 **注意：换的时候，外面那层壳（状态机、降级、记账、退避）一行都不用改。** 这就是"接入层"的意义 —— 第 1 章讲的那个道理，在这里兑现了。
 
+### 换成真模型：两个环境变量
+
+示例里的 `LlmGateway` 已经有 real 模式，走 **OpenAI 兼容**协议（DeepSeek、通义、智谱、Kimi、本地 vLLM 都能用）：
+
+```bash
+HELLOAI_MODE=real \
+HELLOAI_BASE_URL=https://api.deepseek.com/v1 \
+HELLOAI_API_KEY=sk-你的key \
+HELLOAI_MODEL=deepseek-chat \
+mvn spring-boot:run
+```
+
+**key 只从环境变量读。** `application.yml` 里写的是 `${HELLOAI_API_KEY:}`，没有默认值 —— 没设置时调用会立刻报错，不会把请求发出去。
+
+三条规矩：
+
+1. **不要把 key 写进任何被提交的文件**（yml、md、测试代码）。`.gitignore` 能挡住 `application-local.yml`，但环境变量更安全。
+2. **一旦 key 出现在聊天记录、Issue、截图里，就当泄漏处理 —— 立刻吊销，而不是删文件。** 删文件没有用，见第 12 章案例。
+3. **只是验证降级/死信的话，不要用真 key。** fake 模式一分钱不花，行为完全一样。
+
+真实模式下启动日志会说明当前状态，**但不会打印 key 的内容**：
+
+```
+模型模式: REAL   base-url=https://api.deepseek.com/v1   api-key=已设置   model=deepseek-chat
+```
+
 ## 14.8 怎么把它写进简历
 
 三条，每条都要有数字：

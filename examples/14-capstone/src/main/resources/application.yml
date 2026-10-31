@@ -17,8 +17,24 @@ capstone:
   limiter:
     capacity: 5
     refill-per-second: 2
+
+  # ---------------------------------------------------------------
+  # 模型模式：fake（默认，不联网）| real（打真实接口）
+  #
+  # 真实模式需要的 key **只从环境变量读**，本文件永远不含真 key：
+  #   PowerShell : $env:HELLOAI_API_KEY="sk-你的key"
+  #   bash       : export HELLOAI_API_KEY="sk-你的key"
+  # 代码里也没有默认值 —— 没设置就是空串，调用时直接报错，不会发出请求。
+  # ---------------------------------------------------------------
+  llm:
+    mode: ${HELLOAI_MODE:fake}
+    base-url: ${HELLOAI_BASE_URL:https://api.deepseek.com/v1}
+    api-key: ${HELLOAI_API_KEY:}
+    big-model: ${HELLOAI_MODEL:deepseek-chat}
+    small-model: ${HELLOAI_SMALL_MODEL:deepseek-chat}
+
   pricing:
-    # 示例单价，不是任何厂商的真实报价
+    # 示例单价，不是任何厂商的真实报价。用真模型时按你的账单改。
     big-in-per-million: 2.0
     big-out-per-million: 8.0
     small-in-per-million: 0.5
