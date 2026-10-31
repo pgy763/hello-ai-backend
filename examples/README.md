@@ -28,12 +28,12 @@ cp application.example.yml application-local.yml
 | [`02-first-request/`](./02-first-request/) | 第 2 章 · SSE 流式输出 | ✅ 可跑 |
 | [`03-multi-provider/`](./03-multi-provider/) | 第 3 章 · Provider 抽象 | ✅ 可跑（无需 key） |
 | [`04-virtual-key/`](./04-virtual-key/) | 第 4 章 · 虚拟密钥与额度 | ✅ 可跑（H2 + 并发自检） |
-| `05-fallback/` | 第 5 章 · 降级链 | 📝 |
-| `06-ratelimit/` | 第 6 章 · 令牌桶与熔断器 | 📝 |
+| [`05-fallback/`](./05-fallback/) | 第 5 章 · 降级链 | ✅ 可跑（九种故障场景） |
+| [`06-ratelimit/`](./06-ratelimit/) | 第 6 章 · 令牌桶与熔断器 | ✅ 可跑（可选 Redis） |
 | `07-state-machine/` | 第 7 章 · 任务状态机 | 📝 |
 | `08-observability/` | 第 8 章 · 计量与成本 | 📝 |
 
-> **当前状态：第 2、3、4 章的模块都能直接跑。**
+> **当前状态：第 2–6 章的模块都能直接跑。**
 > - `02-first-request/` 需要一把真 key（或任何 OpenAI 兼容服务），打开网页就能对话
 > - `03-multi-provider/` 自带假上游，**不需要 key、不需要外网**，能看见差异翻译的全过程
 > - `04-virtual-key/` 用 H2 内存库替代 MySQL，自带 50 线程并发自检，能压出「不超卖」的结果
