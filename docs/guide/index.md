@@ -10,7 +10,7 @@ title: 全书目录
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 5 篇 · 撰写中 1 章 · 仅提纲 9 章。接下来写的是 **第 5 章 · 降级链：主备模型自动切换**。
+**当前进度**：已完稿 7 篇 · 撰写中 1 章 · 仅提纲 7 章。接下来写的是 **第 7 章 · 多步任务编排**。
 
 ---
 
@@ -35,8 +35,8 @@ title: 全书目录
 | | 章节 | 状态 |
 | --- | --- | --- |
 | 4 | [虚拟密钥：多租户、额度与审计](/guide/04-virtual-key) | ✅ |
-| 5 | [降级链：主备模型自动切换](/guide/05-fallback) | 📝 |
-| 6 | [熔断与限流：Redis + Lua 令牌桶](/guide/06-ratelimit) | 📝 |
+| 5 | [降级链：主备模型自动切换](/guide/05-fallback) | ✅ |
+| 6 | [熔断与限流：Redis + Lua 令牌桶](/guide/06-ratelimit) | ✅ |
 | 7 | [多步任务编排：状态机与断点续跑](/guide/07-state-machine) | 📝 |
 | 8 | [可观测性：token 计量与成本核算](/guide/08-observability) | 📝 |
 
@@ -64,7 +64,7 @@ title: 全书目录
 
 [序章](/guide/00-intro) → [第 1 章 选型](/guide/01-selection) → [第 5 章 降级](/guide/05-fallback) → [第 8 章 计量](/guide/08-observability)
 
-> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章](/guide/04-virtual-key)。前四章都配了能直接跑的示例模块，见 [examples](https://github.com/pgy763/hello-ai-backend/tree/main/examples)。第 5、8 章现在只有提纲，各章状态以上面的目录为准。
+> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章](/guide/04-virtual-key) → [第 5 章](/guide/05-fallback) → [第 6 章](/guide/06-ratelimit)。前六章都配了能直接跑示例，见 [examples](https://github.com/pgy763/hello-ai-backend/tree/main/examples)。第 7、8 章现在只有提纲，各章状态以上面的目录为准。
 
 ## 已经在做 AI 项目？
 

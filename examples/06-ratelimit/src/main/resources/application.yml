@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: 06-ratelimit
+  data:
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      # 没有 Redis 也不影响启动：只有 /api/burn?impl=redis 会提示连不上
+      timeout: 500ms
+
+server:
+  port: 8080
+
+limiter:
+  # 桶容量 = 允许的最大突发
+  capacity: 10
+  # 长期平均速率（从 RPM 反推：600 RPM = 10 QPS）
+  refill-per-sec: 5
+  # 连续失败几次就熔断
+  failure-threshold: 5
+  # 熔断后冷却多久放一个探测
+  open-millis: 800
+
+logging:
+  level:
+    helloai.ratelimit: INFO

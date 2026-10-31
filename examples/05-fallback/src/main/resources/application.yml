@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: 05-fallback
+
+server:
+  port: 8080
+
+# 这条链本身就是策略：顺序 = 优先级，时间 = 用户愿意等多久
+fallback:
+  # 整条链的死线。超过它，宁可返回 503，也不让用户继续等
+  total-budget-ms: 2500
+
+  targets:
+    # 第一跳：主力模型
+    - name: qwen-primary
+      url: http://127.0.0.1:8080/fake/primary/chat/completions
+      model: qwen-plus
+      timeout-ms: 900
+      min-budget-ms: 400
+
+    # 第二跳：换厂商，同档能力
+    - name: deepseek-backup
+      url: http://127.0.0.1:8080/fake/backup/chat/completions
+      model: deepseek-chat
+      timeout-ms: 900
+      min-budget-ms: 400
+
+    # 第三跳：同厂商的小模型，最便宜也最可能活着
+    - name: qwen-small
+      url: http://127.0.0.1:8080/fake/tertiary/chat/completions
+      model: qwen-turbo
+      timeout-ms: 600
+      min-budget-ms: 200
+
+logging:
+  level:
+    helloai.fallback: INFO
