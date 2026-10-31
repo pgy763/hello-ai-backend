@@ -10,7 +10,7 @@ title: 全书目录
 
 图例：✅ 已完稿（有完整正文）· 🚧 撰写中（提纲已就绪，正文在写）· 📝 已规划（仅提纲）· 🔜 下一章要写的
 
-**当前进度**：已完稿 12 篇 · 撰写中 1 章 · 仅提纲 2 章。接下来写的是 **第 12 章 · 事故复盘集**。
+**当前进度**：**全书 15 篇已完稿**（序章 + 第 1–14 章）。14 章都配了能直接跑的示例，全部不依赖 key。
 
 ---
 
@@ -52,9 +52,9 @@ title: 全书目录
 | | 章节 | 状态 |
 | --- | --- | --- |
 | 11 | [压测与容量规划](/guide/11-capacity) | ✅ |
-| 12 | [生产事故复盘集](/guide/12-postmortem) | 📝 |
-| 13 | [面试题：AI 后端工程师会被问到的 30 问](/guide/13-interview) | 🚧 |
-| 14 | [毕业设计：给你自己的系统接上 AI](/guide/14-capstone) | 📝 |
+| 12 | [生产事故复盘集](/guide/12-postmortem) | ✅ |
+| 13 | [面试题：AI 后端工程师会被问到的 30 问](/guide/13-interview) | ✅ |
+| 14 | [毕业设计：工单智能助手](/guide/14-capstone) | ✅ |
 
 ---
 
@@ -64,7 +64,7 @@ title: 全书目录
 
 [序章](/guide/00-intro) → [第 1 章 选型](/guide/01-selection) → [第 5 章 降级](/guide/05-fallback) → [第 8 章 计量](/guide/08-observability)
 
-> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章](/guide/04-virtual-key) → [第 5 章](/guide/05-fallback) → [第 6 章](/guide/06-ratelimit) → [第 7 章](/guide/07-state-machine) → [第 8 章](/guide/08-observability) → [第 9 章](/guide/09-rag-basics) → [第 10 章](/guide/10-rag-in-java) → [第 11 章](/guide/11-capacity)。前十一章都配了能直接跑示例，见 [examples](https://github.com/pgy763/hello-ai-backend/tree/main/examples)。第 12 章往后现在只有提纲，各章状态以上面的目录为准。
+> 这条路径是成书之后的推荐序。**今天就想读到完整正文，走这条**：[序章](/guide/00-intro) → [第 1 章](/guide/01-selection) → [第 2 章](/guide/02-first-request) → [第 3 章](/guide/03-multi-provider) → [第 4 章](/guide/04-virtual-key) → [第 5 章](/guide/05-fallback) → [第 6 章](/guide/06-ratelimit) → [第 7 章](/guide/07-state-machine) → [第 8 章](/guide/08-observability) → [第 9 章](/guide/09-rag-basics) → [第 10 章](/guide/10-rag-in-java) → [第 11 章](/guide/11-capacity) → [第 12 章](/guide/12-postmortem) → [第 13 章](/guide/13-interview) → [第 14 章](/guide/14-capstone)。全书都配了能直接跑示例，见 [examples](https://github.com/pgy763/hello-ai-backend/tree/main/examples)。
 
 ## 已经在做 AI 项目？
 
