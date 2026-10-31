@@ -1,0 +1,61 @@
+name: Build examples
+
+# 这本书的立身之本是「示例能跑」。只构建文档的话，依赖升级、API 变更之后
+# 示例可能已经编译不过而没人发现 —— 所以每个模块都在 CI 里编一遍。
+#
+# 没用 aggregator pom：11 个模块是独立的，matrix 能让它们并行编译，
+# 也避免一个模块坏掉挡住其他模块的信号（fail-fast: false）。
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'examples/**'
+      - '.github/workflows/examples.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'examples/**'
+      - '.github/workflows/examples.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: examples-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - 02-first-request
+          - 03-multi-provider
+          - 04-virtual-key
+          - 05-fallback
+          - 06-ratelimit
+          - 07-state-machine
+          - 08-observability
+          - 09-rag-basics
+          - 10-rag-pipeline
+          - 11-capacity
+          - 14-capstone
+    name: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+          cache-dependency-path: examples/**/pom.xml
+
+      # -DskipTests 是有意的：示例的价值在「能跑起来」，不在单测覆盖率。
+      # 但 package 会把 spring-boot-maven-plugin 的 repackage 也跑一遍，
+      # 能挡住「代码能编译但打不出可执行 jar」这类问题。
+      - name: Compile and package
+        working-directory: examples/${{ matrix.module }}
+        run: mvn -B -ntp -DskipTests package
