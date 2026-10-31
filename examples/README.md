@@ -26,15 +26,17 @@ cp application.example.yml application-local.yml
 | --- | --- | --- |
 | `01-selection/` | 第 1 章 · 三种方案的最小实现对比 | 📝 |
 | [`02-first-request/`](./02-first-request/) | 第 2 章 · SSE 流式输出 | ✅ 可跑 |
-| `03-multi-provider/` | 第 3 章 · Provider 抽象 | 📝 |
-| `04-virtual-key/` | 第 4 章 · 虚拟密钥与额度 | 📝 |
+| [`03-multi-provider/`](./03-multi-provider/) | 第 3 章 · Provider 抽象 | ✅ 可跑（无需 key） |
+| [`04-virtual-key/`](./04-virtual-key/) | 第 4 章 · 虚拟密钥与额度 | ✅ 可跑（H2 + 并发自检） |
 | `05-fallback/` | 第 5 章 · 降级链 | 📝 |
 | `06-ratelimit/` | 第 6 章 · 令牌桶与熔断器 | 📝 |
 | `07-state-machine/` | 第 7 章 · 任务状态机 | 📝 |
 | `08-observability/` | 第 8 章 · 计量与成本 | 📝 |
 
-> **当前状态：只有 `02-first-request/` 是真能跑的**（`mvn spring-boot:run` 起来就有个网页能对话），其余目录还没开始补。
-> 第 1、2 章的正文代码是完整的，可以复制到自己的项目里直接跑；这个目录要放的是「每个机制一个独立可运行模块」的那一版。
+> **当前状态：第 2、3、4 章的模块都能直接跑。**
+> - `02-first-request/` 需要一把真 key（或任何 OpenAI 兼容服务），打开网页就能对话
+> - `03-multi-provider/` 自带假上游，**不需要 key、不需要外网**，能看见差异翻译的全过程
+> - `04-virtual-key/` 用 H2 内存库替代 MySQL，自带 50 线程并发自检，能压出「不超卖」的结果
 
 第 9 章往后**不打算单独建示例模块** —— RAG 那两章的代码要跑起来得先起一个向量库，塞进「最小 Maven 模块」反而跑不通；第 11–14 章是压测、复盘、面试和毕设，本来就没有独立示例。这部分以 [`reference/`](../reference/) 和正文代码为准。
 
