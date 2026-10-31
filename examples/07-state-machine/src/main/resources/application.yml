@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: 07-state-machine
+  datasource:
+    # 文件版 H2：进程被杀之后状态还在 —— 这是「重启续跑」能成立的前提。
+    # WRITE_DELAY=0：H2 默认允许最多 1 秒的写延迟，kill -9 会丢掉最后一两条状态，
+    # 于是「已完成的步骤」会被重跑。示例把这个延迟关掉；生产用 MySQL 的默认配置即可。
+    url: jdbc:h2:file:./data/taskdb;MODE=MySQL;AUTO_SERVER=TRUE;WRITE_DELAY=0
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ''
+  sql:
+    init:
+      mode: always
+
+server:
+  port: 8080
+
+demo:
+  # 每步 LLM 调用的模拟耗时，调大一点方便在跑的过程中 kill 进程
+  step-delay-ms: 0
+  # 租约时长：进程每 2 秒续一次，超过这个时间没续期就判定为僵尸
+  lease-seconds: 6
+
+logging:
+  level:
+    helloai.state: INFO
