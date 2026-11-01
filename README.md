@@ -91,10 +91,11 @@ Spring AI 的官方文档能告诉你 `ChatClient` 怎么调，但它不回答�
 
 ## 配套项目
 
-两处配套，各管一件事：
+三处配套，各管一件事：
 
 - **[`examples/`](examples/)** —— 12 个能跑的模块，一个章节一个，拼起来就是一个完整的接入层。[`14-capstone`](examples/14-capstone/) 是集成版，端到端可跑，还带故障注入
 - **[`reference/`](reference/)** —— 速查表：[错误码对照](reference/error-codes.md)、[参数速查](reference/params.md)、[成本速算](reference/cost.md)、[环境变量](reference/env.md)。写代码时不用翻正文
+- **[llm-dev-pitfalls](https://pgy763.github.io/llm-dev-pitfalls/)** —— 踩坑手册（**可搜索**）：40 条按报错关键词索引的坑，Java 生态优先。这本书讲「怎么对」，那边记「怎么错」—— 报错搜不到答案时去那儿
 
 如果你想要更长的一版接入层（虚拟密钥、熔断、Redis 令牌桶、状态机编排全都有），可以看作者另一个仓库 [llm-gateway](https://github.com/pgy763/llm-gateway)。
 
